@@ -1,7 +1,7 @@
 """
 Lossless Music Studio - Mobile Application (Flet / Android / Desktop Window).
-Responsive 1-tap event handling, immediate background thread search,
-cancel search button, deactivated inputs during search, and instant UI repaint.
+Clean direct layout, instant 1-tap search with cancellation,
+deactivated inputs during search, and immediate real-time rendering.
 """
 import os
 import sys
@@ -40,12 +40,11 @@ def get_android_music_dir() -> str:
 def main(page: ft.Page):
     page.title = "Lossless Studio"
     page.theme_mode = ft.ThemeMode.DARK
-    page.bgcolor = "#07080B"
-    page.padding = ft.Padding(0, 10, 0, 20)
-    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
-    page.scroll = ft.ScrollMode.ADAPTIVE
+    page.bgcolor = "#0B0C10"
+    page.padding = 12
+    page.scroll = ft.ScrollMode.AUTO
 
-    # Configure phone-sized window when previewing on Desktop
+    # Configure phone-sized window when running on Desktop
     try:
         page.window.width = 440
         page.window.height = 860
@@ -60,7 +59,6 @@ def main(page: ft.Page):
     download_dir = get_android_music_dir()
 
     is_searching = False
-    search_thread: Optional[threading.Thread] = None
 
     # Status / SnackBar helper
     def show_snackbar(message: str, is_error: bool = False):
@@ -81,24 +79,24 @@ def main(page: ft.Page):
             [
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.HEADPHONES_ROUNDED, color="#818CF8", size=24),
-                        ft.Text("LOSSLESS STUDIO", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ft.Icon(ft.Icons.HEADPHONES_ROUNDED, color="#818CF8", size=26),
+                        ft.Text("LOSSLESS STUDIO", size=17, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                     ],
                     spacing=8,
                 ),
                 ft.Container(
                     content=ft.Text(" FLAC • 24-bit ", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                     bgcolor="#059669",
-                    border_radius=6,
+                    border_radius=4,
                     padding=ft.Padding(6, 2, 6, 2),
                 ),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         ),
-        bgcolor="#13141F",
-        padding=ft.Padding(16, 12, 16, 12),
-        border_radius=ft.BorderRadius(16, 16, 0, 0),
-        border=ft.Border(bottom=ft.BorderSide(1, "#26283D")),
+        bgcolor="#12131C",
+        border_radius=10,
+        border=ft.Border.all(1, "#222436"),
+        padding=ft.Padding(12, 10, 12, 10),
     )
 
     # =========================================================================
@@ -139,9 +137,9 @@ def main(page: ft.Page):
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        bgcolor="#181926",
+        bgcolor="#161722",
         border_radius=10,
-        border=ft.Border.all(1, "#2C2E45"),
+        border=ft.Border.all(1, "#27273A"),
         padding=ft.Padding(12, 8, 8, 8),
     )
 
@@ -153,8 +151,8 @@ def main(page: ft.Page):
         hint_style=ft.TextStyle(color="#71717A", size=12),
         text_size=13,
         color=ft.Colors.WHITE,
-        bgcolor="#181926",
-        border_color="#2C2E45",
+        bgcolor="#161722",
+        border_color="#27273A",
         border_radius=10,
         content_padding=12,
         dense=True,
@@ -167,13 +165,13 @@ def main(page: ft.Page):
             val = page.get_clipboard()
             if val:
                 search_field.value = val.strip()
-                search_field.update()
+                page.update()
         except Exception:
             pass
 
     def on_clear_click(e):
         search_field.value = ""
-        search_field.update()
+        page.update()
 
     search_actions = ft.Row(
         [
@@ -203,9 +201,9 @@ def main(page: ft.Page):
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        bgcolor="#181926",
+        bgcolor="#161722",
         border_radius=10,
-        border=ft.Border.all(1, "#2C2E45"),
+        border=ft.Border.all(1, "#27273A"),
         padding=ft.Padding(4, 2, 4, 2),
     )
 
@@ -219,8 +217,8 @@ def main(page: ft.Page):
             ft.dropdown.Option("ALAC", "🍏 ALAC (.m4a)"),
         ],
         text_size=12,
-        bgcolor="#181926",
-        border_color="#2C2E45",
+        bgcolor="#161722",
+        border_color="#27273A",
         border_radius=8,
         content_padding=8,
         width=140,
@@ -289,7 +287,7 @@ def main(page: ft.Page):
 
     def on_chip_click(query_text: str):
         search_field.value = query_text
-        search_field.update()
+        page.update()
         trigger_search(None)
 
     chips_list = [
@@ -306,7 +304,7 @@ def main(page: ft.Page):
         [
             ft.Chip(
                 label=ft.Text(name, size=11, color="#A1A1AA"),
-                bgcolor="#1F2030",
+                bgcolor="#1E202C",
                 on_click=lambda e, q=name: on_chip_click(q),
             )
             for name in chips_list
@@ -318,7 +316,7 @@ def main(page: ft.Page):
     # 6. Results List & Track Card Builder
     # =========================================================================
     results_column = ft.Column(spacing=6)
-    loading_indicator = ft.ProgressBar(color="#6366F1", bgcolor="#181926", visible=False)
+    loading_indicator = ft.ProgressBar(color="#6366F1", bgcolor="#161722", visible=False)
     status_label = ft.Text("✨ Введите название песни для поиска", size=12, color="#71717A")
 
     def build_track_card(track: TrackInfo) -> ft.Container:
@@ -363,7 +361,7 @@ def main(page: ft.Page):
             progress_bar.visible = True
             progress_text.visible = True
             progress_text.value = "Загрузка аудиопотока..."
-            card_content.update()
+            page.update()
 
             def _progress_cb(fraction: float, msg: str):
                 progress_bar.value = fraction
@@ -375,7 +373,7 @@ def main(page: ft.Page):
                     download_icon_btn.icon_color = "#10B981"
                     download_icon_btn.visible = True
                     show_snackbar(f"✓ Скачано: {track.artist} - {track.title}")
-                card_content.update()
+                page.update()
 
             def _run():
                 try:
@@ -393,7 +391,7 @@ def main(page: ft.Page):
                     download_icon_btn.icon = ft.Icons.REFRESH_ROUNDED
                     download_icon_btn.icon_color = "#EF4444"
                     show_snackbar(f"Ошибка: {ex}", is_error=True)
-                    card_content.update()
+                    page.update()
 
             threading.Thread(target=_run, daemon=True).start()
 
@@ -432,16 +430,16 @@ def main(page: ft.Page):
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            bgcolor="#181926",
+            bgcolor="#161722",
             border_radius=10,
-            border=ft.Border.all(1, "#2C2E45"),
+            border=ft.Border.all(1, "#27273A"),
             padding=8,
         )
         return card_content
 
     # --- Synchronous, 1-Tap Search Logic ---
     def trigger_search(e=None):
-        nonlocal is_searching, search_thread
+        nonlocal is_searching
 
         query = search_field.value.strip() if search_field.value else ""
         if not query:
@@ -459,10 +457,7 @@ def main(page: ft.Page):
         cancel_btn.visible = True
         loading_indicator.visible = True
         status_label.value = f"🔎 Поиск «{query}» по Lossless базам..."
-        results_column.controls = []
-        
-        # Immediate UI update
-        phone_inner.update()
+        results_column.controls.clear()
         page.update()
 
         # 2. Fast background worker thread
@@ -485,21 +480,19 @@ def main(page: ft.Page):
 
                 if not results:
                     status_label.value = "Ничего не найдено. Попробуйте другой запрос."
-                    results_column.controls = [
+                    results_column.controls.append(
                         ft.Container(
                             content=ft.Text("🔍 Треки не найдены", size=13, color="#71717A"),
                             alignment=ft.alignment.center,
                             padding=20,
                         )
-                    ]
+                    )
                 else:
                     status_label.value = f"✨ Найдено треков: {len(results)}"
-                    new_cards = [build_track_card(track) for track in results]
-                    results_column.controls = new_cards
+                    for track in results:
+                        results_column.controls.append(build_track_card(track))
 
-                # Invalidate and force instant redraw of results
-                results_column.update()
-                phone_inner.update()
+                # Root page update forces instant Flutter redraw
                 page.update()
             except Exception as ex:
                 loading_indicator.visible = False
@@ -509,11 +502,9 @@ def main(page: ft.Page):
                 cancel_btn.visible = False
                 is_searching = False
                 status_label.value = f"Ошибка поиска: {ex}"
-                phone_inner.update()
                 page.update()
 
-        search_thread = threading.Thread(target=_worker, daemon=True)
-        search_thread.start()
+        threading.Thread(target=_worker, daemon=True).start()
 
     def cancel_search(e=None):
         nonlocal is_searching
@@ -524,7 +515,6 @@ def main(page: ft.Page):
         search_field.disabled = False
         cancel_btn.visible = False
         status_label.value = "⏹ Поиск отменен."
-        phone_inner.update()
         page.update()
 
     # Direct references - fires on the very first tap!
@@ -532,47 +522,18 @@ def main(page: ft.Page):
     cancel_btn.on_click = cancel_search
     search_field.on_submit = trigger_search
 
-    # =========================================================================
-    # 7. Centered Smartphone Device Frame
-    # =========================================================================
-    phone_inner = ft.Container(
-        content=ft.Column(
-            [
-                path_card,
-                search_row,
-                chips_row,
-                options_row,
-                buttons_row,
-                loading_indicator,
-                status_label,
-                results_column,
-            ],
-            spacing=10,
-        ),
-        padding=ft.Padding(14, 12, 14, 16),
+    # Assemble directly on Page
+    page.add(
+        header_bar,
+        path_card,
+        search_row,
+        chips_row,
+        options_row,
+        buttons_row,
+        loading_indicator,
+        status_label,
+        results_column,
     )
-
-    phone_device_frame = ft.Container(
-        content=ft.Column(
-            [
-                header_bar,
-                phone_inner,
-            ],
-            spacing=0,
-        ),
-        width=420,
-        bgcolor="#12131D",
-        border_radius=16,
-        border=ft.Border.all(1, "#26283D"),
-        shadow=ft.BoxShadow(
-            spread_radius=1,
-            blur_radius=20,
-            color="#141526",
-            offset=ft.Offset(0, 8),
-        ),
-    )
-
-    page.add(phone_device_frame)
 
 
 if __name__ == "__main__":
