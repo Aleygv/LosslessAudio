@@ -1,13 +1,13 @@
 """
 Mobile Web Application & PWA Server for Lossless Studio.
-Allows opening the mobile interface on any Android smartphone via Wi-Fi (e.g. http://192.168.x.x:8550)
-or installing it as a PWA (Progressive Web App) with instant FLAC/ALAC downloads!
+Allows opening the mobile interface on PC browser or any Android smartphone via Wi-Fi.
 """
 import os
 import sys
 import socket
+import webbrowser
 import threading
-from typing import List
+import time
 import flet as ft
 
 # Add workspace directory to python path
@@ -27,18 +27,40 @@ def get_local_ip() -> str:
         return "127.0.0.1"
 
 
+def is_port_available(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def get_free_port(start_port: int = 8550) -> int:
+    for p in range(start_port, start_port + 20):
+        if is_port_available(p):
+            return p
+    return start_port
+
+
+def auto_open_browser(url: str):
+    time.sleep(1.2)
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     local_ip = get_local_ip()
-    port = 8550
-    print("\n" + "=" * 60)
-    print("⚡ LOSSLESS STUDIO MOBILE WEB SERVER")
+    port = get_free_port(8550)
+    local_url = f"http://localhost:{port}"
+    phone_url = f"http://{local_ip}:{port}"
+
     print("=" * 60)
-    print(f"📱 Откройте на телефоне (в браузере Chrome/Samsung/любом):")
-    print(f"👉 http://{local_ip}:{port}")
-    print(f"👉 или http://localhost:{port} (на компьютере)")
-    print("\n💡 Совет: Нажмите в браузере телефона «Добавить на главный экран»,")
-    print("чтобы приложение установилось как нативная иконка на смартфон!")
-    print("=" * 60 + "\n")
+    print("  LOSSLESS STUDIO - MOBILE WEB SERVER")
+    print("=" * 60)
+    print(f"  PC Browser URL:  {local_url}")
+    print(f"  Phone Wi-Fi URL: {phone_url}")
+    print("=" * 60)
+
+    threading.Thread(target=auto_open_browser, args=(local_url,), daemon=True).start()
 
     ft.app(
         target=mobile_main,

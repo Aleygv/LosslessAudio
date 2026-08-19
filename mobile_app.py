@@ -5,6 +5,7 @@ instant Lossless / Hi-Res search, and 1-tap FLAC / ALAC downloading.
 """
 import os
 import sys
+import subprocess
 import threading
 from pathlib import Path
 from typing import List, Optional
@@ -37,16 +38,17 @@ def get_android_music_dir() -> str:
 
 
 def main(page: ft.Page):
-    page.title = "Lossless Studio (Mobile Preview)"
+    page.title = "Lossless Studio"
     page.theme_mode = ft.ThemeMode.DARK
-    page.bgcolor = "#0B0C10"
-    page.padding = 12
+    page.bgcolor = "#08080C"
+    page.padding = 0
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.scroll = ft.ScrollMode.ADAPTIVE
 
     # Configure phone-sized window when previewing on Desktop
     try:
         page.window.width = 440
-        page.window.height = 840
+        page.window.height = 860
         page.window.min_width = 360
         page.window.min_height = 600
     except Exception:
@@ -54,35 +56,12 @@ def main(page: ft.Page):
 
     config = load_config()
     engine = MusicSearchEngine()
-    active_format = config.get("target_format", "flac")
     download_dir = get_android_music_dir()
-
-    # --- UI Elements ---
-
-    # 1. AppBar
-    page.app_bar = ft.AppBar(
-        leading=ft.Icon(ft.Icons.HEADPHONES_ROUNDED, color="#818CF8", size=28),
-        leading_width=40,
-        title=ft.Row(
-            [
-                ft.Text("LOSSLESS STUDIO", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                ft.Container(
-                    content=ft.Text(" FLAC ", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                    bgcolor="#059669",
-                    border_radius=4,
-                    padding=ft.Padding(4, 2, 4, 2),
-                ),
-            ],
-            spacing=8,
-        ),
-        center_title=False,
-        bgcolor="#12131C",
-    )
 
     # Status / SnackBar helper
     def show_snackbar(message: str, is_error: bool = False):
         snack = ft.SnackBar(
-            content=ft.Text(message, color=ft.Colors.WHITE),
+            content=ft.Text(message, color=ft.Colors.WHITE, size=13),
             bgcolor="#DC2626" if is_error else "#10B981",
             duration=3000,
         )
@@ -90,16 +69,86 @@ def main(page: ft.Page):
         snack.open = True
         page.update()
 
+    # =========================================================================
+    # 1. Header & Storage Path Card
+    # =========================================================================
+    header_bar = ft.Container(
+        content=ft.Row(
+            [
+                ft.Row(
+                    [
+                        ft.Icon(ft.Icons.HEADPHONES_ROUNDED, color="#818CF8", size=26),
+                        ft.Text("LOSSLESS STUDIO", size=17, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    ],
+                    spacing=8,
+                ),
+                ft.Container(
+                    content=ft.Text(" FLAC / Hi-Res ", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    bgcolor="#059669",
+                    border_radius=4,
+                    padding=ft.Padding(6, 2, 6, 2),
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        ),
+        bgcolor="#12131C",
+        padding=ft.Padding(16, 12, 16, 12),
+        border=ft.Border(bottom=ft.BorderSide(1, "#222436")),
+    )
+
+    # Visible Save Path Card
+    def on_open_folder(e):
+        try:
+            if os.path.exists(download_dir):
+                if os.name == "nt":
+                    os.startfile(download_dir)
+                else:
+                    subprocess.run(["xdg-open", download_dir])
+            show_snackbar(f"Папка: {download_dir}")
+        except Exception:
+            show_snackbar(f"Папка: {download_dir}")
+
+    path_card = ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, color="#F59E0B", size=20),
+                ft.Column(
+                    [
+                        ft.Text("Сохранять треки в папку:", size=10, color="#71717A", weight=ft.FontWeight.BOLD),
+                        ft.Text(download_dir, size=11, color="#E4E4E7", no_wrap=True, max_lines=1),
+                    ],
+                    spacing=1,
+                    expand=True,
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
+                    icon_color="#818CF8",
+                    icon_size=18,
+                    tooltip="Открыть папку",
+                    on_click=on_open_folder,
+                ),
+            ],
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        bgcolor="#161722",
+        border_radius=10,
+        border=ft.Border.all(1, "#27273A"),
+        padding=ft.Padding(12, 8, 8, 8),
+        margin=ft.Padding(0, 8, 0, 4),
+    )
+
+    # =========================================================================
     # 2. Search Box with Clear & Paste
+    # =========================================================================
     search_field = ft.TextField(
-        hint_text="Введите название трека или автора...",
-        hint_style=ft.TextStyle(color="#71717A", size=13),
-        text_size=14,
+        hint_text="Введите трек (например, Hans Zimmer, Pink Floyd)...",
+        hint_style=ft.TextStyle(color="#71717A", size=12),
+        text_size=13,
         color=ft.Colors.WHITE,
         bgcolor="#161722",
         border_color="#27273A",
-        border_radius=12,
-        content_padding=14,
+        border_radius=10,
+        content_padding=12,
         dense=True,
         prefix_icon=ft.Icons.SEARCH_ROUNDED,
         expand=True,
@@ -123,12 +172,14 @@ def main(page: ft.Page):
             ft.IconButton(
                 icon=ft.Icons.CONTENT_PASTE_ROUNDED,
                 icon_color="#A1A1AA",
+                icon_size=20,
                 tooltip="Вставить из буфера",
                 on_click=on_paste_click,
             ),
             ft.IconButton(
                 icon=ft.Icons.CLEAR_ROUNDED,
                 icon_color="#71717A",
+                icon_size=20,
                 tooltip="Очистить",
                 on_click=on_clear_click,
             ),
@@ -136,7 +187,6 @@ def main(page: ft.Page):
         spacing=0,
     )
 
-    # Search bar row
     search_row = ft.Container(
         content=ft.Row(
             [
@@ -146,14 +196,16 @@ def main(page: ft.Page):
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
         bgcolor="#161722",
-        border_radius=12,
+        border_radius=10,
         border=ft.Border.all(1, "#27273A"),
-        padding=ft.Padding(8, 2, 8, 2),
+        padding=ft.Padding(6, 2, 6, 2),
     )
 
+    # =========================================================================
     # 3. Format & Filter Options
+    # =========================================================================
     format_dropdown = ft.Dropdown(
-        value=active_format.upper(),
+        value="FLAC",
         options=[
             ft.dropdown.Option("FLAC", "💎 FLAC (.flac)"),
             ft.dropdown.Option("ALAC", "🍏 ALAC (.m4a)"),
@@ -162,8 +214,8 @@ def main(page: ft.Page):
         bgcolor="#161722",
         border_color="#27273A",
         border_radius=8,
-        content_padding=10,
-        width=150,
+        content_padding=8,
+        width=140,
         dense=True,
     )
 
@@ -175,13 +227,15 @@ def main(page: ft.Page):
 
     options_row = ft.Row(
         [
-            ft.Row([ft.Text("Формат:", size=12, color="#71717A"), format_dropdown], spacing=6),
+            ft.Row([ft.Text("Формат:", size=11, color="#71717A"), format_dropdown], spacing=6),
             lossless_only_switch,
         ],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
     )
 
-    # 4. Search Trigger Button
+    # =========================================================================
+    # 4. Search Trigger Button & Quick Chips
+    # =========================================================================
     search_btn = ft.ElevatedButton(
         content=ft.Row(
             [
@@ -199,7 +253,6 @@ def main(page: ft.Page):
         width=float("inf"),
     )
 
-    # 5. Quick Suggestion Chips
     def on_chip_click(query_text: str):
         search_field.value = query_text
         page.update()
@@ -219,7 +272,7 @@ def main(page: ft.Page):
         [
             ft.Chip(
                 label=ft.Text(name, size=11, color="#A1A1AA"),
-                bgcolor="#1E202C",
+                bgcolor="#1A1C28",
                 on_click=lambda e, q=name: on_chip_click(q),
             )
             for name in chips_list
@@ -227,14 +280,14 @@ def main(page: ft.Page):
         scroll=ft.ScrollMode.HIDDEN,
     )
 
-    # 6. Results List
-    results_column = ft.Column(spacing=8, expand=True)
+    # =========================================================================
+    # 5. Results Column & Track Card Builder
+    # =========================================================================
+    results_column = ft.Column(spacing=6)
     loading_indicator = ft.ProgressBar(color="#6366F1", bgcolor="#161722", visible=False)
     status_label = ft.Text("✨ Введите название песни для поиска", size=12, color="#71717A")
 
-    # --- Build Track Card for Mobile ---
     def build_track_card(track: TrackInfo) -> ft.Container:
-        # Tier colors
         if track.quality_tier == QualityTier.HI_RES_24BIT:
             badge_bg = "#451A03"
             badge_fg = "#F59E0B"
@@ -255,11 +308,11 @@ def main(page: ft.Page):
         # Image thumbnail
         cover_img = ft.Image(
             src=track.cover_url if track.cover_url else "https://via.placeholder.com/64/161722/FFFFFF?text=🎵",
-            width=50,
-            height=50,
+            width=48,
+            height=48,
             fit=ft.ImageFit.COVER,
-            border_radius=8,
-            error_content=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color="#71717A", size=24),
+            border_radius=6,
+            error_content=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color="#71717A", size=22),
         )
 
         progress_bar = ft.ProgressBar(value=0, color="#6366F1", bgcolor="#12131C", visible=False, height=4)
@@ -276,12 +329,12 @@ def main(page: ft.Page):
             download_icon_btn.visible = False
             progress_bar.visible = True
             progress_text.visible = True
-            progress_text.value = "Загрузка..."
+            progress_text.value = "Загрузка потока..."
             page.update()
 
             def _progress_cb(fraction: float, msg: str):
                 progress_bar.value = fraction
-                progress_text.value = msg[:30]
+                progress_text.value = msg[:32]
                 if fraction >= 1.0:
                     progress_text.value = "✓ Сохранено в Музыку"
                     progress_text.color = "#10B981"
@@ -324,7 +377,7 @@ def main(page: ft.Page):
                         [
                             ft.Row(
                                 [
-                                    ft.Text(track.title[:38], size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, no_wrap=True),
+                                    ft.Text(track.title[:32], size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, no_wrap=True),
                                     ft.Container(
                                         content=ft.Text(badge_text, size=9, weight=ft.FontWeight.BOLD, color=badge_fg),
                                         bgcolor=badge_bg,
@@ -332,9 +385,9 @@ def main(page: ft.Page):
                                         padding=ft.Padding(4, 2, 4, 2),
                                     ),
                                 ],
-                                spacing=6,
+                                spacing=4,
                             ),
-                            ft.Text(sub_info[:45], size=11, color="#A1A1AA", no_wrap=True),
+                            ft.Text(sub_info[:40], size=11, color="#A1A1AA", no_wrap=True),
                             progress_bar,
                             progress_text,
                         ],
@@ -347,7 +400,7 @@ def main(page: ft.Page):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor="#161722",
-            border_radius=10,
+            border_radius=8,
             border=ft.Border.all(1, "#27273A"),
             padding=8,
         )
@@ -372,47 +425,55 @@ def main(page: ft.Page):
                 if lossless_only_switch.value:
                     results = [r for r in results if r.is_lossless or r.quality_tier in [QualityTier.HI_RES_24BIT, QualityTier.LOSSLESS_FLAC, QualityTier.LOSSLESS_ALAC]]
 
-                def _render():
-                    loading_indicator.visible = False
-                    search_btn.disabled = False
-                    if not results:
-                        status_label.value = "Ничего не найдено. Попробуйте другой запрос."
-                        results_column.controls.append(
-                            ft.Container(
-                                content=ft.Text("🔍 Треки не найдены", size=13, color="#71717A"),
-                                alignment=ft.alignment.center,
-                                padding=20,
-                            )
+                loading_indicator.visible = False
+                search_btn.disabled = False
+                if not results:
+                    status_label.value = "Ничего не найдено. Попробуйте другой запрос."
+                    results_column.controls.append(
+                        ft.Container(
+                            content=ft.Text("🔍 Треки не найдены", size=13, color="#71717A"),
+                            alignment=ft.alignment.center,
+                            padding=20,
                         )
-                    else:
-                        status_label.value = f"✨ Найдено треков: {len(results)}"
-                        for track in results:
-                            results_column.controls.append(build_track_card(track))
-                    page.update()
-
-                page.call_soon(_render)
+                    )
+                else:
+                    status_label.value = f"✨ Найдено треков: {len(results)}"
+                    for track in results:
+                        results_column.controls.append(build_track_card(track))
+                page.update()
             except Exception as ex:
-                def _error():
-                    loading_indicator.visible = False
-                    search_btn.disabled = False
-                    status_label.value = f"Ошибка поиска: {ex}"
-                    page.update()
-                page.call_soon(_error)
+                loading_indicator.visible = False
+                search_btn.disabled = False
+                status_label.value = f"Ошибка поиска: {ex}"
+                page.update()
 
         threading.Thread(target=_search_thread, daemon=True).start()
 
     search_btn.on_click = trigger_search
     search_field.on_submit = trigger_search
 
-    # Assemble Layout
+    # Assemble Inside Centered Phone Container
+    phone_container = ft.Container(
+        content=ft.Column(
+            [
+                path_card,
+                search_row,
+                chips_row,
+                options_row,
+                search_btn,
+                loading_indicator,
+                status_label,
+                results_column,
+            ],
+            spacing=10,
+        ),
+        width=440,
+        padding=ft.Padding(12, 8, 12, 20),
+    )
+
     page.add(
-        search_row,
-        chips_row,
-        options_row,
-        search_btn,
-        loading_indicator,
-        status_label,
-        results_column,
+        header_bar,
+        phone_container,
     )
 
 
