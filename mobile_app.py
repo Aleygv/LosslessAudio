@@ -1,12 +1,12 @@
 """
 Lossless Music Studio - Mobile Android Application (Flet / Flutter).
-Designed for touch screens, Android 13/14/15 scoped storage,
-instant Lossless / Hi-Res search, and 1-tap FLAC / ALAC downloading.
+Features centered smartphone card design, instant async search with cancellation,
+active download directory badge, and 1-tap FLAC / ALAC downloading.
 """
 import os
 import sys
+import asyncio
 import subprocess
-import threading
 from pathlib import Path
 from typing import List, Optional
 import flet as ft
@@ -37,18 +37,18 @@ def get_android_music_dir() -> str:
     return desktop_path
 
 
-def main(page: ft.Page):
+async def main(page: ft.Page):
     page.title = "Lossless Studio"
     page.theme_mode = ft.ThemeMode.DARK
-    page.bgcolor = "#08080C"
-    page.padding = 0
+    page.bgcolor = "#07080B"
+    page.padding = ft.Padding(0, 16, 0, 24)
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.scroll = ft.ScrollMode.ADAPTIVE
 
     # Configure phone-sized window when previewing on Desktop
     try:
-        page.window.width = 440
-        page.window.height = 860
+        page.window.width = 460
+        page.window.height = 880
         page.window.min_width = 360
         page.window.min_height = 600
     except Exception:
@@ -57,6 +57,9 @@ def main(page: ft.Page):
     config = load_config()
     engine = MusicSearchEngine()
     download_dir = get_android_music_dir()
+
+    current_search_task: Optional[asyncio.Task] = None
+    is_searching = False
 
     # Status / SnackBar helper
     def show_snackbar(message: str, is_error: bool = False):
@@ -70,33 +73,36 @@ def main(page: ft.Page):
         page.update()
 
     # =========================================================================
-    # 1. Header & Storage Path Card
+    # 1. Header Bar
     # =========================================================================
     header_bar = ft.Container(
         content=ft.Row(
             [
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.HEADPHONES_ROUNDED, color="#818CF8", size=26),
-                        ft.Text("LOSSLESS STUDIO", size=17, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ft.Icon(ft.Icons.HEADPHONES_ROUNDED, color="#818CF8", size=24),
+                        ft.Text("LOSSLESS STUDIO", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                     ],
                     spacing=8,
                 ),
                 ft.Container(
-                    content=ft.Text(" FLAC / Hi-Res ", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    content=ft.Text(" FLAC • 24-bit ", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                     bgcolor="#059669",
-                    border_radius=4,
+                    border_radius=6,
                     padding=ft.Padding(6, 2, 6, 2),
                 ),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         ),
-        bgcolor="#12131C",
+        bgcolor="#13141F",
         padding=ft.Padding(16, 12, 16, 12),
-        border=ft.Border(bottom=ft.BorderSide(1, "#222436")),
+        border_radius=ft.BorderRadius(16, 16, 0, 0),
+        border=ft.Border(bottom=ft.BorderSide(1, "#26283D")),
     )
 
-    # Visible Save Path Card
+    # =========================================================================
+    # 2. Storage Path Card
+    # =========================================================================
     def on_open_folder(e):
         try:
             if os.path.exists(download_dir):
@@ -111,18 +117,18 @@ def main(page: ft.Page):
     path_card = ft.Container(
         content=ft.Row(
             [
-                ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, color="#F59E0B", size=20),
+                ft.Icon(ft.Icons.FOLDER_SPECIAL_ROUNDED, color="#F59E0B", size=20),
                 ft.Column(
                     [
-                        ft.Text("Сохранять треки в папку:", size=10, color="#71717A", weight=ft.FontWeight.BOLD),
+                        ft.Text("ПАПКА ДЛЯ СОХРАНЕНИЯ FLAC:", size=9, color="#818CF8", weight=ft.FontWeight.BOLD),
                         ft.Text(download_dir, size=11, color="#E4E4E7", no_wrap=True, max_lines=1),
                     ],
                     spacing=1,
                     expand=True,
                 ),
                 ft.IconButton(
-                    icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
-                    icon_color="#818CF8",
+                    icon=ft.Icons.FOLDER_OPEN_ROUNDED,
+                    icon_color="#A1A1AA",
                     icon_size=18,
                     tooltip="Открыть папку",
                     on_click=on_open_folder,
@@ -130,23 +136,22 @@ def main(page: ft.Page):
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        bgcolor="#161722",
+        bgcolor="#181926",
         border_radius=10,
-        border=ft.Border.all(1, "#27273A"),
+        border=ft.Border.all(1, "#2C2E45"),
         padding=ft.Padding(12, 8, 8, 8),
-        margin=ft.Padding(0, 8, 0, 4),
     )
 
     # =========================================================================
-    # 2. Search Box with Clear & Paste
+    # 3. Search Box with Paste and Clear
     # =========================================================================
     search_field = ft.TextField(
-        hint_text="Введите трек (например, Hans Zimmer, Pink Floyd)...",
+        hint_text="Введите трек (например, Pink Floyd, Hans Zimmer)...",
         hint_style=ft.TextStyle(color="#71717A", size=12),
         text_size=13,
         color=ft.Colors.WHITE,
-        bgcolor="#161722",
-        border_color="#27273A",
+        bgcolor="#181926",
+        border_color="#2C2E45",
         border_radius=10,
         content_padding=12,
         dense=True,
@@ -154,32 +159,32 @@ def main(page: ft.Page):
         expand=True,
     )
 
-    def on_paste_click(e):
+    async def on_paste_click(e):
         try:
-            val = page.get_clipboard()
+            val = await page.get_clipboard_async()
             if val:
                 search_field.value = val.strip()
-                page.update()
+                await page.update_async()
         except Exception:
             pass
 
-    def on_clear_click(e):
+    async def on_clear_click(e):
         search_field.value = ""
-        page.update()
+        await page.update_async()
 
     search_actions = ft.Row(
         [
             ft.IconButton(
                 icon=ft.Icons.CONTENT_PASTE_ROUNDED,
-                icon_color="#A1A1AA",
-                icon_size=20,
-                tooltip="Вставить из буфера",
+                icon_color="#818CF8",
+                icon_size=18,
+                tooltip="Вставить",
                 on_click=on_paste_click,
             ),
             ft.IconButton(
                 icon=ft.Icons.CLEAR_ROUNDED,
                 icon_color="#71717A",
-                icon_size=20,
+                icon_size=18,
                 tooltip="Очистить",
                 on_click=on_clear_click,
             ),
@@ -195,14 +200,14 @@ def main(page: ft.Page):
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        bgcolor="#161722",
+        bgcolor="#181926",
         border_radius=10,
-        border=ft.Border.all(1, "#27273A"),
-        padding=ft.Padding(6, 2, 6, 2),
+        border=ft.Border.all(1, "#2C2E45"),
+        padding=ft.Padding(4, 2, 4, 2),
     )
 
     # =========================================================================
-    # 3. Format & Filter Options
+    # 4. Format & Filter Options
     # =========================================================================
     format_dropdown = ft.Dropdown(
         value="FLAC",
@@ -211,8 +216,8 @@ def main(page: ft.Page):
             ft.dropdown.Option("ALAC", "🍏 ALAC (.m4a)"),
         ],
         text_size=12,
-        bgcolor="#161722",
-        border_color="#27273A",
+        bgcolor="#181926",
+        border_color="#2C2E45",
         border_radius=8,
         content_padding=8,
         width=140,
@@ -234,13 +239,13 @@ def main(page: ft.Page):
     )
 
     # =========================================================================
-    # 4. Search Trigger Button & Quick Chips
+    # 5. Search Action & Cancel Buttons
     # =========================================================================
     search_btn = ft.ElevatedButton(
         content=ft.Row(
             [
                 ft.Icon(ft.Icons.SEARCH_ROUNDED, color=ft.Colors.WHITE, size=18),
-                ft.Text("Найти в Lossless / FLAC", weight=ft.FontWeight.BOLD, size=14, color=ft.Colors.WHITE),
+                ft.Text("Найти в Lossless / FLAC", weight=ft.FontWeight.BOLD, size=13, color=ft.Colors.WHITE),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=8,
@@ -250,13 +255,39 @@ def main(page: ft.Page):
             shape=ft.RoundedRectangleBorder(radius=10),
             padding=ft.Padding(0, 12, 0, 12),
         ),
-        width=float("inf"),
+        expand=True,
     )
 
-    def on_chip_click(query_text: str):
+    cancel_btn = ft.ElevatedButton(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.CLOSE_ROUNDED, color=ft.Colors.WHITE, size=16),
+                ft.Text("Отмена", weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.WHITE),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=4,
+        ),
+        bgcolor="#DC2626",
+        style=ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=10),
+            padding=ft.Padding(0, 12, 0, 12),
+        ),
+        visible=False,
+        width=105,
+    )
+
+    buttons_row = ft.Row(
+        [
+            search_btn,
+            cancel_btn,
+        ],
+        spacing=8,
+    )
+
+    async def on_chip_click(query_text: str):
         search_field.value = query_text
-        page.update()
-        trigger_search()
+        await page.update_async()
+        await trigger_search()
 
     chips_list = [
         "Hans Zimmer",
@@ -272,8 +303,8 @@ def main(page: ft.Page):
         [
             ft.Chip(
                 label=ft.Text(name, size=11, color="#A1A1AA"),
-                bgcolor="#1A1C28",
-                on_click=lambda e, q=name: on_chip_click(q),
+                bgcolor="#1F2030",
+                on_click=lambda e, q=name: asyncio.create_task(on_chip_click(q)),
             )
             for name in chips_list
         ],
@@ -281,10 +312,10 @@ def main(page: ft.Page):
     )
 
     # =========================================================================
-    # 5. Results Column & Track Card Builder
+    # 6. Results List & Track Card Builder
     # =========================================================================
     results_column = ft.Column(spacing=6)
-    loading_indicator = ft.ProgressBar(color="#6366F1", bgcolor="#161722", visible=False)
+    loading_indicator = ft.ProgressBar(color="#6366F1", bgcolor="#181926", visible=False)
     status_label = ft.Text("✨ Введите название песни для поиска", size=12, color="#71717A")
 
     def build_track_card(track: TrackInfo) -> ft.Container:
@@ -308,11 +339,11 @@ def main(page: ft.Page):
         # Image thumbnail
         cover_img = ft.Image(
             src=track.cover_url if track.cover_url else "https://via.placeholder.com/64/161722/FFFFFF?text=🎵",
-            width=48,
-            height=48,
+            width=46,
+            height=46,
             fit=ft.ImageFit.COVER,
             border_radius=6,
-            error_content=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color="#71717A", size=22),
+            error_content=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color="#71717A", size=20),
         )
 
         progress_bar = ft.ProgressBar(value=0, color="#6366F1", bgcolor="#12131C", visible=False, height=4)
@@ -325,12 +356,12 @@ def main(page: ft.Page):
             tooltip="Скачать в FLAC",
         )
 
-        def download_worker(e):
+        async def download_worker(e):
             download_icon_btn.visible = False
             progress_bar.visible = True
             progress_text.visible = True
-            progress_text.value = "Загрузка потока..."
-            page.update()
+            progress_text.value = "Загрузка аудиопотока..."
+            await page.update_async()
 
             def _progress_cb(fraction: float, msg: str):
                 progress_bar.value = fraction
@@ -344,27 +375,27 @@ def main(page: ft.Page):
                     show_snackbar(f"✓ Скачано: {track.artist} - {track.title}")
                 page.update()
 
-            def _run():
-                try:
-                    fmt = format_dropdown.value.lower() if format_dropdown.value else "flac"
-                    saved_path = engine.download_and_process(
-                        track=track,
-                        download_dir=download_dir,
-                        target_format=fmt,
-                        progress_callback=_progress_cb,
-                    )
-                except Exception as ex:
-                    progress_text.value = f"Ошибка: {str(ex)[:25]}"
-                    progress_text.color = "#EF4444"
-                    download_icon_btn.visible = True
-                    download_icon_btn.icon = ft.Icons.REFRESH_ROUNDED
-                    download_icon_btn.icon_color = "#EF4444"
-                    show_snackbar(f"Ошибка: {ex}", is_error=True)
-                    page.update()
+            def _sync_download():
+                fmt = format_dropdown.value.lower() if format_dropdown.value else "flac"
+                return engine.download_and_process(
+                    track=track,
+                    download_dir=download_dir,
+                    target_format=fmt,
+                    progress_callback=_progress_cb,
+                )
 
-            threading.Thread(target=_run, daemon=True).start()
+            try:
+                await asyncio.to_thread(_sync_download)
+            except Exception as ex:
+                progress_text.value = f"Ошибка: {str(ex)[:25]}"
+                progress_text.color = "#EF4444"
+                download_icon_btn.visible = True
+                download_icon_btn.icon = ft.Icons.REFRESH_ROUNDED
+                download_icon_btn.icon_color = "#EF4444"
+                show_snackbar(f"Ошибка: {ex}", is_error=True)
+                await page.update_async()
 
-        download_icon_btn.on_click = download_worker
+        download_icon_btn.on_click = lambda e: asyncio.create_task(download_worker(e))
 
         dur_str = f" • ⏱ {track.duration_str}" if track.duration > 0 else ""
         sub_info = f"{track.artist}{dur_str}"
@@ -387,7 +418,7 @@ def main(page: ft.Page):
                                 ],
                                 spacing=4,
                             ),
-                            ft.Text(sub_info[:40], size=11, color="#A1A1AA", no_wrap=True),
+                            ft.Text(sub_info[:38], size=11, color="#A1A1AA", no_wrap=True),
                             progress_bar,
                             progress_text,
                         ],
@@ -399,34 +430,40 @@ def main(page: ft.Page):
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            bgcolor="#161722",
-            border_radius=8,
-            border=ft.Border.all(1, "#27273A"),
+            bgcolor="#181926",
+            border_radius=10,
+            border=ft.Border.all(1, "#2C2E45"),
             padding=8,
         )
         return card_content
 
     # --- Search Logic ---
-    def trigger_search(e=None):
+    async def trigger_search(e=None):
+        nonlocal current_search_task, is_searching
+
         query = search_field.value.strip() if search_field.value else ""
         if not query:
             show_snackbar("Введите запрос для поиска", is_error=True)
             return
 
+        is_searching = True
         search_btn.disabled = True
+        cancel_btn.visible = True
         loading_indicator.visible = True
-        status_label.value = f"🔎 Поиск «{query}» в Lossless источниках..."
+        status_label.value = f"🔎 Поиск «{query}» по Lossless базам..."
         results_column.controls.clear()
-        page.update()
+        await page.update_async()
 
-        def _search_thread():
+        async def _perform_search():
             try:
-                results = engine.search_all(query)
+                results = await asyncio.to_thread(engine.search_all, query)
                 if lossless_only_switch.value:
                     results = [r for r in results if r.is_lossless or r.quality_tier in [QualityTier.HI_RES_24BIT, QualityTier.LOSSLESS_FLAC, QualityTier.LOSSLESS_ALAC]]
 
                 loading_indicator.visible = False
                 search_btn.disabled = False
+                cancel_btn.visible = False
+
                 if not results:
                     status_label.value = "Ничего не найдено. Попробуйте другой запрос."
                     results_column.controls.append(
@@ -440,41 +477,77 @@ def main(page: ft.Page):
                     status_label.value = f"✨ Найдено треков: {len(results)}"
                     for track in results:
                         results_column.controls.append(build_track_card(track))
-                page.update()
+                await page.update_async()
+            except asyncio.CancelledError:
+                loading_indicator.visible = False
+                search_btn.disabled = False
+                cancel_btn.visible = False
+                status_label.value = "⏹ Поиск отменен пользователем."
+                await page.update_async()
             except Exception as ex:
                 loading_indicator.visible = False
                 search_btn.disabled = False
+                cancel_btn.visible = False
                 status_label.value = f"Ошибка поиска: {ex}"
-                page.update()
+                await page.update_async()
 
-        threading.Thread(target=_search_thread, daemon=True).start()
+        current_search_task = asyncio.create_task(_perform_search())
 
-    search_btn.on_click = trigger_search
-    search_field.on_submit = trigger_search
+    async def cancel_search(e):
+        nonlocal current_search_task, is_searching
+        if current_search_task and not current_search_task.done():
+            current_search_task.cancel()
+        loading_indicator.visible = False
+        search_btn.disabled = False
+        cancel_btn.visible = False
+        status_label.value = "⏹ Поиск отменен."
+        await page.update_async()
 
-    # Assemble Inside Centered Phone Container
-    phone_container = ft.Container(
+    search_btn.on_click = lambda e: asyncio.create_task(trigger_search(e))
+    cancel_btn.on_click = lambda e: asyncio.create_task(cancel_search(e))
+    search_field.on_submit = lambda e: asyncio.create_task(trigger_search(e))
+
+    # =========================================================================
+    # 7. Centered Smartphone Device Frame
+    # =========================================================================
+    phone_inner = ft.Container(
         content=ft.Column(
             [
                 path_card,
                 search_row,
                 chips_row,
                 options_row,
-                search_btn,
+                buttons_row,
                 loading_indicator,
                 status_label,
                 results_column,
             ],
             spacing=10,
         ),
-        width=440,
-        padding=ft.Padding(12, 8, 12, 20),
+        padding=ft.Padding(14, 12, 14, 16),
     )
 
-    page.add(
-        header_bar,
-        phone_container,
+    phone_device_frame = ft.Container(
+        content=ft.Column(
+            [
+                header_bar,
+                phone_inner,
+            ],
+            spacing=0,
+        ),
+        width=420,
+        bgcolor="#12131D",
+        border_radius=16,
+        border=ft.Border.all(1, "#26283D"),
+        shadow=ft.BoxShadow(
+            spread_radius=1,
+            blur_radius=20,
+            color="#141526",
+            offset=ft.Offset(0, 8),
+        ),
     )
+
+    page.add(phone_device_frame)
 
 
 if __name__ == "__main__":
