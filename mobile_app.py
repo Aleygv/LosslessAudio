@@ -1,7 +1,7 @@
 """
 Lossless Music Studio - Mobile Application (Flet / Android / Desktop Window).
 Responsive 1-tap event handling, immediate background thread search,
-cancel search button, deactivated inputs during search, and FLAC/ALAC downloader.
+cancel search button, deactivated inputs during search, and instant UI repaint.
 """
 import os
 import sys
@@ -167,13 +167,13 @@ def main(page: ft.Page):
             val = page.get_clipboard()
             if val:
                 search_field.value = val.strip()
-                page.update()
+                search_field.update()
         except Exception:
             pass
 
     def on_clear_click(e):
         search_field.value = ""
-        page.update()
+        search_field.update()
 
     search_actions = ft.Row(
         [
@@ -289,7 +289,7 @@ def main(page: ft.Page):
 
     def on_chip_click(query_text: str):
         search_field.value = query_text
-        page.update()
+        search_field.update()
         trigger_search(None)
 
     chips_list = [
@@ -363,7 +363,7 @@ def main(page: ft.Page):
             progress_bar.visible = True
             progress_text.visible = True
             progress_text.value = "Загрузка аудиопотока..."
-            page.update()
+            card_content.update()
 
             def _progress_cb(fraction: float, msg: str):
                 progress_bar.value = fraction
@@ -375,7 +375,7 @@ def main(page: ft.Page):
                     download_icon_btn.icon_color = "#10B981"
                     download_icon_btn.visible = True
                     show_snackbar(f"✓ Скачано: {track.artist} - {track.title}")
-                page.update()
+                card_content.update()
 
             def _run():
                 try:
@@ -393,7 +393,7 @@ def main(page: ft.Page):
                     download_icon_btn.icon = ft.Icons.REFRESH_ROUNDED
                     download_icon_btn.icon_color = "#EF4444"
                     show_snackbar(f"Ошибка: {ex}", is_error=True)
-                    page.update()
+                    card_content.update()
 
             threading.Thread(target=_run, daemon=True).start()
 
@@ -459,7 +459,10 @@ def main(page: ft.Page):
         cancel_btn.visible = True
         loading_indicator.visible = True
         status_label.value = f"🔎 Поиск «{query}» по Lossless базам..."
-        results_column.controls.clear()
+        results_column.controls = []
+        
+        # Immediate UI update
+        phone_inner.update()
         page.update()
 
         # 2. Fast background worker thread
@@ -482,17 +485,21 @@ def main(page: ft.Page):
 
                 if not results:
                     status_label.value = "Ничего не найдено. Попробуйте другой запрос."
-                    results_column.controls.append(
+                    results_column.controls = [
                         ft.Container(
                             content=ft.Text("🔍 Треки не найдены", size=13, color="#71717A"),
                             alignment=ft.alignment.center,
                             padding=20,
                         )
-                    )
+                    ]
                 else:
                     status_label.value = f"✨ Найдено треков: {len(results)}"
-                    for track in results:
-                        results_column.controls.append(build_track_card(track))
+                    new_cards = [build_track_card(track) for track in results]
+                    results_column.controls = new_cards
+
+                # Invalidate and force instant redraw of results
+                results_column.update()
+                phone_inner.update()
                 page.update()
             except Exception as ex:
                 loading_indicator.visible = False
@@ -502,6 +509,7 @@ def main(page: ft.Page):
                 cancel_btn.visible = False
                 is_searching = False
                 status_label.value = f"Ошибка поиска: {ex}"
+                phone_inner.update()
                 page.update()
 
         search_thread = threading.Thread(target=_worker, daemon=True)
@@ -516,6 +524,7 @@ def main(page: ft.Page):
         search_field.disabled = False
         cancel_btn.visible = False
         status_label.value = "⏹ Поиск отменен."
+        phone_inner.update()
         page.update()
 
     # Direct references - fires on the very first tap!
