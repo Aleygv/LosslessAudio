@@ -22,6 +22,7 @@ def resolve_and_download_full_stream(
 ) -> str:
     """
     Finds and downloads the full-length audio stream matching track metadata and duration.
+    Works seamlessly with or without FFmpeg installed.
     """
     ffmpeg_exe = get_ffmpeg_path()
     dest_template = os.path.join(temp_dir, f"full_{track.id}.%(ext)s")
@@ -116,14 +117,13 @@ def resolve_and_download_full_stream(
                 mb_tot = total / (1024 * 1024)
                 progress_callback(frac, f"Скачивание полного аудио ({mb_down:.1f}/{mb_tot:.1f} MB)...")
         elif d.get("status") == "finished" and progress_callback:
-            progress_callback(0.82, "Обработка и декодирование аудио...")
+            progress_callback(0.82, "Сохранение и запись тегов...")
 
     ydl_down_opts = {
         "format": "bestaudio/best",
         "outtmpl": dest_template,
         "quiet": True,
         "no_warnings": True,
-        "ffmpeg_location": os.path.dirname(ffmpeg_exe),
         "progress_hooks": [ytdl_hook],
         "socket_timeout": 15,
         "noplaylist": True,
@@ -133,6 +133,8 @@ def resolve_and_download_full_stream(
             }
         }
     }
+    if ffmpeg_exe:
+        ydl_down_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_exe)
 
     try:
         with yt_dlp.YoutubeDL(ydl_down_opts) as ydl:
@@ -144,9 +146,10 @@ def resolve_and_download_full_stream(
             "outtmpl": dest_template,
             "quiet": True,
             "no_warnings": True,
-            "ffmpeg_location": os.path.dirname(ffmpeg_exe),
             "socket_timeout": 15,
         }
+        if ffmpeg_exe:
+            sc_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_exe)
         with yt_dlp.YoutubeDL(sc_opts) as ydl_sc:
             ydl_sc.download([f"scsearch1:{track.artist} - {track.title}"])
 

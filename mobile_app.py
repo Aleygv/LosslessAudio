@@ -39,7 +39,7 @@ def main(page: ft.Page):
     page.title = "Lossless Studio"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#0B0C10"
-    page.padding = 12
+    page.padding = ft.Padding(12, 14, 12, 14)
     page.scroll = ft.ScrollMode.AUTO
 
     # Configure phone-sized window when running on Desktop
@@ -49,6 +49,7 @@ def main(page: ft.Page):
         page.window.min_width = 360
         page.window.min_height = 600
         page.window.center()
+        page.window.full_screen = True
     except Exception:
         pass
 
