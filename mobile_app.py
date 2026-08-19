@@ -45,7 +45,6 @@ def main(page: ft.Page):
 
     config = load_config()
     engine = MusicSearchEngine()
-    current_results: List[TrackInfo] = []
     active_format = config.get("target_format", "flac")
     download_dir = get_android_music_dir()
 
@@ -62,7 +61,7 @@ def main(page: ft.Page):
                     content=ft.Text(" FLAC ", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                     bgcolor="#059669",
                     border_radius=4,
-                    padding=ft.padding.symmetric(horizontal=4, vertical=2),
+                    padding=ft.Padding(4, 2, 4, 2),
                 ),
             ],
             spacing=8,
@@ -140,7 +139,7 @@ def main(page: ft.Page):
         bgcolor="#161722",
         border_radius=12,
         border=ft.border.all(1, "#27273A"),
-        padding=ft.padding.symmetric(horizontal=8, vertical=2),
+        padding=ft.Padding(8, 2, 8, 2),
     )
 
     # 3. Format & Filter Options
@@ -187,7 +186,7 @@ def main(page: ft.Page):
         bgcolor="#6366F1",
         style=ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=10),
-            padding=ft.padding.symmetric(vertical=14),
+            padding=ft.Padding(0, 12, 0, 12),
         ),
         width=float("inf"),
     )
@@ -251,7 +250,7 @@ def main(page: ft.Page):
             width=50,
             height=50,
             fit=ft.ImageFit.COVER,
-            border_radius=ft.border_radius.all(8),
+            border_radius=8,
             error_content=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color="#71717A", size=24),
         )
 
@@ -322,7 +321,7 @@ def main(page: ft.Page):
                                         content=ft.Text(badge_text, size=9, weight=ft.FontWeight.BOLD, color=badge_fg),
                                         bgcolor=badge_bg,
                                         border_radius=4,
-                                        padding=ft.padding.symmetric(horizontal=4, vertical=2),
+                                        padding=ft.Padding(4, 2, 4, 2),
                                     ),
                                 ],
                                 spacing=6,
