@@ -38,16 +38,7 @@ jobs:
 
       - name: Build Android APK with Flet
         run: |
-          flet build apk \
-            --project-name "LosslessStudio" \
-            --description "Lossless Audio Grabber FLAC ALAC" \
-            --org "com.antigravity.losslessstudio" \
-            --build-version "1.0.0" \
-            --build-number 1 \
-            --module-name main \
-            --no-rich-output \
-            --yes \
-            -v
+          flet build apk --no-rich-output --yes -v
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4

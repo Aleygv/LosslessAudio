@@ -1,0 +1,27 @@
+[project]
+name = "losslessstudio"
+version = "1.0.0"
+description = "Lossless Audio Grabber FLAC ALAC"
+authors = [{ name = "Aleygv" }]
+dependencies = [
+    "flet",
+    "pillow",
+    "mutagen",
+    "requests",
+    "yt-dlp",
+    "pycryptodome",
+    "imageio-ffmpeg",
+    "packaging"
+]
+
+[tool.flet]
+org = "com.antigravity.losslessstudio"
+product = "Lossless Studio"
+company = "Antigravity"
+copyright = "Copyright (C) 2026"
+android_permissions = [
+    "android.permission.INTERNET=true",
+    "android.permission.WRITE_EXTERNAL_STORAGE=true",
+    "android.permission.READ_EXTERNAL_STORAGE=true",
+    "android.permission.MANAGE_EXTERNAL_STORAGE=true"
+]
