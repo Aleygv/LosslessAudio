@@ -138,7 +138,7 @@ def main(page: ft.Page):
         ),
         bgcolor="#161722",
         border_radius=12,
-        border=ft.border.all(1, "#27273A"),
+        border=ft.Border.all(1, "#27273A"),
         padding=ft.Padding(8, 2, 8, 2),
     )
 
@@ -160,7 +160,6 @@ def main(page: ft.Page):
 
     lossless_only_switch = ft.Switch(
         label="Только Hi-Res",
-        label_style=ft.TextStyle(size=12, color="#A1A1AA", weight=ft.FontWeight.BOLD),
         value=False,
         active_color="#10B981",
     )
@@ -340,7 +339,7 @@ def main(page: ft.Page):
             ),
             bgcolor="#161722",
             border_radius=10,
-            border=ft.border.all(1, "#27273A"),
+            border=ft.Border.all(1, "#27273A"),
             padding=8,
         )
         return card_content
