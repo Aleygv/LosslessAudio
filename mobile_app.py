@@ -37,11 +37,20 @@ def get_android_music_dir() -> str:
 
 
 def main(page: ft.Page):
-    page.title = "Lossless Studio"
+    page.title = "Lossless Studio (Mobile Preview)"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#0B0C10"
     page.padding = 12
     page.scroll = ft.ScrollMode.ADAPTIVE
+
+    # Configure phone-sized window when previewing on Desktop
+    try:
+        page.window.width = 440
+        page.window.height = 840
+        page.window.min_width = 360
+        page.window.min_height = 600
+    except Exception:
+        pass
 
     config = load_config()
     engine = MusicSearchEngine()
