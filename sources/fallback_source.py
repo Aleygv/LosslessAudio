@@ -30,10 +30,12 @@ class HighQualityStreamSource(BaseSource):
                 "extract_flat": True,
                 "default_search": f"ytsearch{limit}",
                 "skip_download": True,
-                "socket_timeout": 5,
+                "socket_timeout": 8,
+                "geo_bypass": True,
+                "nocheckcertificate": True,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android", "ios", "web_creator"]
+                        "player_client": ["android", "ios", "mweb", "web"]
                     }
                 }
             }
@@ -106,16 +108,19 @@ class HighQualityStreamSource(BaseSource):
             "outtmpl": dest_template,
             "quiet": True,
             "no_warnings": True,
-            "ffmpeg_location": os.path.dirname(ffmpeg_exe),
             "progress_hooks": [ytdl_hook],
-            "socket_timeout": 15,
+            "socket_timeout": 20,
+            "geo_bypass": True,
+            "nocheckcertificate": True,
             "noplaylist": True,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "web_creator"]
+                    "player_client": ["android", "ios", "mweb", "web"]
                 }
             }
         }
+        if ffmpeg_exe:
+            ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_exe)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([track.download_url])

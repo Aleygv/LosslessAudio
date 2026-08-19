@@ -28,11 +28,11 @@ def resolve_and_download_full_stream(
     dest_template = os.path.join(temp_dir, f"full_{track.id}.%(ext)s")
 
     if progress_callback:
-        progress_callback(0.1, f"Поиск полного трека ({track.duration_str})...")
+        progress_callback(0.1, f"Поиск аудио ({track.duration_str})...")
 
     search_queries = [
         f"{track.artist} - {track.title} official audio",
-        f"{track.artist} - {track.title} FLAC",
+        f"{track.artist} - {track.title} audio",
         f"{track.artist} - {track.title}",
     ]
 
@@ -44,10 +44,12 @@ def resolve_and_download_full_stream(
         "no_warnings": True,
         "extract_flat": True,
         "skip_download": True,
-        "socket_timeout": 8,
+        "socket_timeout": 10,
+        "geo_bypass": True,
+        "nocheckcertificate": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "web_creator"]
+                "player_client": ["android", "ios", "mweb", "web"]
             }
         }
     }
@@ -55,7 +57,7 @@ def resolve_and_download_full_stream(
     with yt_dlp.YoutubeDL(ydl_search_opts) as ydl:
         for q in search_queries:
             try:
-                search_res = ydl.extract_info(f"ytsearch6:{q}", download=False)
+                search_res = ydl.extract_info(f"ytsearch4:{q}", download=False)
                 entries = search_res.get("entries", []) if search_res else []
                 for entry in entries:
                     if not entry:
@@ -125,11 +127,13 @@ def resolve_and_download_full_stream(
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [ytdl_hook],
-        "socket_timeout": 15,
+        "socket_timeout": 20,
+        "geo_bypass": True,
+        "nocheckcertificate": True,
         "noplaylist": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "web_creator"]
+                "player_client": ["android", "ios", "mweb", "web"]
             }
         }
     }
@@ -140,18 +144,10 @@ def resolve_and_download_full_stream(
         with yt_dlp.YoutubeDL(ydl_down_opts) as ydl:
             ydl.download([best_candidate_url])
     except Exception as e:
-        logger.warning(f"Primary download attempt failed: {e}. Trying SoundCloud fallback...")
-        sc_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": dest_template,
-            "quiet": True,
-            "no_warnings": True,
-            "socket_timeout": 15,
-        }
-        if ffmpeg_exe:
-            sc_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_exe)
-        with yt_dlp.YoutubeDL(sc_opts) as ydl_sc:
-            ydl_sc.download([f"scsearch1:{track.artist} - {track.title}"])
+        logger.warning(f"Download attempt for {best_candidate_url} failed: {e}. Trying direct query search...")
+        fallback_query = f"ytsearch1:{track.artist} - {track.title}"
+        with yt_dlp.YoutubeDL(ydl_down_opts) as ydl_fb:
+            ydl_fb.download([fallback_query])
 
     candidates = glob.glob(os.path.join(temp_dir, f"full_{track.id}.*"))
     if candidates:
@@ -159,4 +155,4 @@ def resolve_and_download_full_stream(
             progress_callback(0.85, "Полный аудиопоток успешно получен")
         return candidates[0]
 
-    raise RuntimeError(f"Could not download full audio stream for {track.title}")
+    raise RuntimeError(f"Could not download audio stream for {track.artist} - {track.title}")

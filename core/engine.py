@@ -1,6 +1,7 @@
 """
-Search and Download Engine orchestrator.
-Manages multi-threaded search across all sources and coordinates audio pipeline.
+Main Search & Download Engine for Lossless Audio Grabber.
+Aggregates all Lossless/Hi-Res sources (Direct Lossless, Deezer, Archive.org, Mirrors, HQ Streams).
+Handles multi-threaded searches, audio conversion, and metadata tagging.
 """
 import os
 import tempfile
@@ -9,15 +10,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Callable, Optional
 
 from core.models import TrackInfo, QualityTier
-from core.audio import convert_audio, probe_audio
+from core.audio import convert_audio
 from core.metadata import tag_audio_file
 from core.resolver import resolve_and_download_full_stream
+
+from sources.base import BaseSource
+from sources.music_search_resolver import DirectLosslessSource
 from sources.deezer_source import DeezerSource
 from sources.archive_source import ArchiveSource
-from sources.music_search_resolver import DirectLosslessSource
 from sources.web_source import WebLosslessSource
 from sources.fallback_source import HighQualityStreamSource
-from sources.base import BaseSource
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +37,18 @@ class MusicSearchEngine:
     def search_all(
         self,
         query: str,
-        limit_per_source: int = 8,
+        limit_per_source: int = 4,
         status_callback: Optional[Callable[[str], None]] = None
     ) -> List[TrackInfo]:
         """
-        Runs parallel search across all sources and returns unified list of tracks.
+        Executes parallel search across all Lossless and HQ audio sources.
+        Returns a sorted, deduplicated list of TrackInfo objects.
         """
         all_results: List[TrackInfo] = []
-        if not query or not query.strip():
-            return all_results
+        seen_keys = set()
 
-        query = query.strip()
         if status_callback:
-            status_callback(f"Поиск '{query}' по всем источникам...")
+            status_callback(f"Поиск «{query}» во всех Lossless источниках...")
 
         with ThreadPoolExecutor(max_workers=len(self.sources)) as executor:
             future_to_source = {
@@ -60,7 +61,12 @@ class MusicSearchEngine:
                 try:
                     res = future.result()
                     if res:
-                        all_results.extend(res)
+                        for track in res:
+                            # Deduplicate by clean artist + title
+                            key = f"{track.artist.lower().strip()}_{track.title.lower().strip()}_{track.quality_tier.value}"
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                all_results.append(track)
                         if status_callback:
                             status_callback(f"Найдено {len(res)} треков в {source.name}")
                 except Exception as e:
@@ -84,7 +90,7 @@ class MusicSearchEngine:
         self,
         track: TrackInfo,
         download_dir: str,
-        target_format: str = "alac",  # "alac" or "flac"
+        target_format: str = "flac",  # "alac" or "flac"
         progress_callback: Optional[Callable[[float, str], None]] = None
     ) -> str:
         """
@@ -100,18 +106,20 @@ class MusicSearchEngine:
                 progress_callback(0.05, f"Подготовка: {track.artist} - {track.title}")
 
             # 1. Download full audio stream
-            # If Archive.org with direct .flac link, download directly
             if "archive.org" in (track.download_url or "").lower() and track.download_url.lower().endswith(".flac"):
                 source_instance = ArchiveSource()
                 raw_file = source_instance.download_track(track, temp_dir, progress_callback)
+            elif track.source == "HQ Audio Stream" and track.download_url:
+                source_instance = HighQualityStreamSource()
+                raw_file = source_instance.download_track(track, temp_dir, progress_callback)
             else:
-                # Use Full-Length Audio Resolver to ensure full song is downloaded (not a 30s preview)
+                # Use Full-Length Audio Resolver to ensure full song is downloaded
                 raw_file = resolve_and_download_full_stream(track, temp_dir, progress_callback)
 
             if not os.path.exists(raw_file):
                 raise RuntimeError("Downloaded raw audio file does not exist.")
 
-            # 2. Conversion to ALAC or FLAC
+            # 2. Conversion to ALAC or FLAC (or direct copy if ffmpeg not present)
             final_filename = f"{track.clean_filename_base}{target_ext}"
             final_path = os.path.join(download_dir, final_filename)
 
@@ -123,13 +131,13 @@ class MusicSearchEngine:
                 counter += 1
 
             if progress_callback:
-                progress_callback(0.85, f"Кодирование в {target_format.upper()}...")
+                progress_callback(0.85, f"Сохранение в {target_format.upper()}...")
 
             converted_path = convert_audio(raw_file, final_path, target_format=target_format)
 
             # 3. Metadata & Cover tagging
             if progress_callback:
-                progress_callback(0.92, "Вшивание официальных метаданных и обложки...")
+                progress_callback(0.92, "Вшивание метаданных и обложки...")
 
             tag_audio_file(converted_path, track)
 
