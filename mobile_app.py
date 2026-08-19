@@ -1,12 +1,10 @@
 """
 Lossless Music Studio - Mobile Application (Flet / Android / Desktop Window).
-Clean direct layout, instant 1-tap search with cancellation,
-deactivated inputs during search, and immediate real-time rendering.
+Uses official page.run_thread executor for real-time background search and download updates.
 """
 import os
 import sys
 import subprocess
-import threading
 from pathlib import Path
 from typing import List, Optional
 import flet as ft
@@ -393,7 +391,7 @@ def main(page: ft.Page):
                     show_snackbar(f"Ошибка: {ex}", is_error=True)
                     page.update()
 
-            threading.Thread(target=_run, daemon=True).start()
+            page.run_thread(_run)
 
         download_icon_btn.on_click = download_worker
 
@@ -437,7 +435,7 @@ def main(page: ft.Page):
         )
         return card_content
 
-    # --- Synchronous, 1-Tap Search Logic ---
+    # --- Synchronous, 1-Tap Search Logic with Managed Thread Executor ---
     def trigger_search(e=None):
         nonlocal is_searching
 
@@ -449,7 +447,7 @@ def main(page: ft.Page):
         if is_searching:
             return
 
-        # 1. Immediately deactivate inputs and show cancel button & loading bar
+        # 1. Deactivate inputs & show loading status
         is_searching = True
         search_btn.disabled = True
         open_folder_btn.disabled = True
@@ -460,7 +458,7 @@ def main(page: ft.Page):
         results_column.controls.clear()
         page.update()
 
-        # 2. Fast background worker thread
+        # 2. Managed background worker using page.run_thread
         def _worker():
             nonlocal is_searching
             try:
@@ -492,7 +490,7 @@ def main(page: ft.Page):
                     for track in results:
                         results_column.controls.append(build_track_card(track))
 
-                # Root page update forces instant Flutter redraw
+                # Dispatches directly to Flutter engine via Flet's session executor
                 page.update()
             except Exception as ex:
                 loading_indicator.visible = False
@@ -504,7 +502,7 @@ def main(page: ft.Page):
                 status_label.value = f"Ошибка поиска: {ex}"
                 page.update()
 
-        threading.Thread(target=_worker, daemon=True).start()
+        page.run_thread(_worker)
 
     def cancel_search(e=None):
         nonlocal is_searching
