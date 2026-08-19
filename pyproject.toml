@@ -5,12 +5,9 @@ description = "Lossless Audio Grabber FLAC ALAC"
 authors = [{ name = "Aleygv" }]
 dependencies = [
     "flet",
-    "pillow",
-    "mutagen",
     "requests",
+    "mutagen",
     "yt-dlp",
-    "pycryptodome",
-    "imageio-ffmpeg",
     "packaging"
 ]
 
