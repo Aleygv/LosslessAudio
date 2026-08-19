@@ -35,7 +35,7 @@ class HighQualityStreamSource(BaseSource):
                 "nocheckcertificate": True,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android", "ios", "mweb", "web"]
+                        "player_client": ["android", "ios", "web"]
                     }
                 }
             }
@@ -89,6 +89,7 @@ class HighQualityStreamSource(BaseSource):
         progress_callback: Optional[Callable[[float, str], None]] = None
     ) -> str:
         import yt_dlp
+        from core.resolver import resolve_and_download_full_stream
 
         dest_template = os.path.join(temp_dir, f"raw_{track.id}.%(ext)s")
         ffmpeg_exe = get_ffmpeg_path()
@@ -104,7 +105,7 @@ class HighQualityStreamSource(BaseSource):
                 progress_callback(0.88, "Обработка аудиопотока...")
 
         ydl_opts = {
-            "format": "bestaudio/best",
+            "format": "ba/b",
             "outtmpl": dest_template,
             "quiet": True,
             "no_warnings": True,
@@ -115,20 +116,24 @@ class HighQualityStreamSource(BaseSource):
             "noplaylist": True,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "mweb", "web"]
+                    "player_client": ["android", "ios", "web"]
                 }
             }
         }
         if ffmpeg_exe:
             ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_exe)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([track.download_url])
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([track.download_url])
 
-        candidates = glob.glob(os.path.join(temp_dir, f"raw_{track.id}.*"))
-        if candidates:
-            if progress_callback:
-                progress_callback(0.92, "Аудиопоток готов")
-            return candidates[0]
+            candidates = glob.glob(os.path.join(temp_dir, f"raw_{track.id}.*"))
+            if candidates:
+                if progress_callback:
+                    progress_callback(0.92, "Аудиопоток готов")
+                return candidates[0]
+        except Exception as e:
+            logger.warning(f"Direct stream download failed for {track.title}: {e}. Resolving candidate...")
 
-        raise RuntimeError(f"Could not locate downloaded file for {track.id}")
+        # Automatic fallback to full resolver
+        return resolve_and_download_full_stream(track, temp_dir, progress_callback)

@@ -6,7 +6,7 @@ Ensures downloaded tracks are 100% full length and not 30-second previews.
 import os
 import glob
 import logging
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 import yt_dlp
 
 from core.models import TrackInfo
@@ -22,7 +22,7 @@ def resolve_and_download_full_stream(
 ) -> str:
     """
     Finds and downloads the full-length audio stream matching track metadata and duration.
-    Works seamlessly with or without FFmpeg installed.
+    Works seamlessly across Android, Windows, and VPN connections.
     """
     ffmpeg_exe = get_ffmpeg_path()
     dest_template = os.path.join(temp_dir, f"full_{track.id}.%(ext)s")
@@ -36,8 +36,7 @@ def resolve_and_download_full_stream(
         f"{track.artist} - {track.title}",
     ]
 
-    best_candidate_url = None
-    best_score = -9999
+    candidates_urls: List[str] = []
 
     ydl_search_opts = {
         "quiet": True,
@@ -49,7 +48,7 @@ def resolve_and_download_full_stream(
         "nocheckcertificate": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "mweb", "web"]
+                "player_client": ["android", "ios", "web"]
             }
         }
     }
@@ -63,48 +62,15 @@ def resolve_and_download_full_stream(
                     if not entry:
                         continue
                     v_url = entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id')}"
-                    v_title = entry.get("title", "").lower()
-                    v_dur = int(entry.get("duration") or 0)
-                    uploader = (entry.get("uploader") or "").lower()
-
-                    score = 100
-                    
-                    if track.duration > 0 and v_dur > 0:
-                        diff = abs(track.duration - v_dur)
-                        if diff <= 3:
-                            score += 80
-                        elif diff <= 10:
-                            score += 45
-                        elif diff <= 25:
-                            score += 15
-                        elif diff > 50:
-                            score -= 90
-                    
-                    if "official audio" in v_title or "topic" in uploader:
-                        score += 50
-                    if "flac" in v_title or "lossless" in v_title:
-                        score += 40
-                    if "audio" in v_title:
-                        score += 20
-                    if track.artist.lower() in uploader or track.artist.lower() in v_title:
-                        score += 30
-
-                    negative_keywords = ["live", "cover", "karaoke", "reaction", "remix", "instrumental", "acoustic", "tutorial", "parody", "review"]
-                    for kw in negative_keywords:
-                        if kw in v_title and kw not in track.title.lower():
-                            score -= 80
-
-                    if score > best_score:
-                        best_score = score
-                        best_candidate_url = v_url
-
-                if best_score >= 140:
+                    if v_url not in candidates_urls:
+                        candidates_urls.append(v_url)
+                if len(candidates_urls) >= 3:
                     break
             except Exception as e:
                 logger.debug(f"Search query '{q}' notice: {e}")
 
-    if not best_candidate_url:
-        best_candidate_url = f"ytsearch1:{track.artist} - {track.title} audio"
+    if not candidates_urls:
+        candidates_urls = [f"ytsearch1:{track.artist} - {track.title} audio"]
 
     if progress_callback:
         progress_callback(0.25, "Загрузка полного аудиопотока в максимальном качестве...")
@@ -122,7 +88,7 @@ def resolve_and_download_full_stream(
             progress_callback(0.82, "Сохранение и запись тегов...")
 
     ydl_down_opts = {
-        "format": "bestaudio/best",
+        "format": "ba/b",
         "outtmpl": dest_template,
         "quiet": True,
         "no_warnings": True,
@@ -133,21 +99,34 @@ def resolve_and_download_full_stream(
         "noplaylist": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "mweb", "web"]
+                "player_client": ["android", "ios", "web"]
             }
         }
     }
     if ffmpeg_exe:
         ydl_down_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_exe)
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_down_opts) as ydl:
-            ydl.download([best_candidate_url])
-    except Exception as e:
-        logger.warning(f"Download attempt for {best_candidate_url} failed: {e}. Trying direct query search...")
-        fallback_query = f"ytsearch1:{track.artist} - {track.title}"
-        with yt_dlp.YoutubeDL(ydl_down_opts) as ydl_fb:
-            ydl_fb.download([fallback_query])
+    # Try candidate URLs in order until one succeeds
+    download_success = False
+    for candidate_url in candidates_urls:
+        try:
+            with yt_dlp.YoutubeDL(ydl_down_opts) as ydl:
+                ydl.download([candidate_url])
+            files = glob.glob(os.path.join(temp_dir, f"full_{track.id}.*"))
+            if files:
+                download_success = True
+                break
+        except Exception as e:
+            logger.warning(f"Candidate {candidate_url} download failed: {e}. Trying next...")
+
+    # Fallback to direct search query if candidates failed
+    if not download_success:
+        try:
+            fallback_query = f"ytsearch1:{track.artist} - {track.title}"
+            with yt_dlp.YoutubeDL(ydl_down_opts) as ydl_fb:
+                ydl_fb.download([fallback_query])
+        except Exception as e:
+            logger.error(f"Fallback search query failed: {e}")
 
     candidates = glob.glob(os.path.join(temp_dir, f"full_{track.id}.*"))
     if candidates:
@@ -155,4 +134,4 @@ def resolve_and_download_full_stream(
             progress_callback(0.85, "Полный аудиопоток успешно получен")
         return candidates[0]
 
-    raise RuntimeError(f"Could not download audio stream for {track.artist} - {track.title}")
+    raise RuntimeError(f"Не удалось получить аудиопоток для {track.artist} - {track.title}")
