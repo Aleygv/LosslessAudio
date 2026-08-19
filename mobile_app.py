@@ -343,7 +343,7 @@ def main(page: ft.Page):
             src=track.cover_url if track.cover_url else "https://via.placeholder.com/64/161722/FFFFFF?text=🎵",
             width=46,
             height=46,
-            fit=ft.ImageFit.COVER,
+            fit="cover",
             border_radius=6,
             error_content=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color="#71717A", size=20),
         )
