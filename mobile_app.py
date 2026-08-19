@@ -1,12 +1,12 @@
 """
-Lossless Music Studio - Mobile Android Application (Flet / Flutter).
-Features centered smartphone card design, instant async search with cancellation,
-active download directory badge, and 1-tap FLAC / ALAC downloading.
+Lossless Music Studio - Mobile Application (Flet / Android / Desktop Window).
+Responsive 1-tap event handling, immediate background thread search,
+cancel search button, deactivated inputs during search, and FLAC/ALAC downloader.
 """
 import os
 import sys
-import asyncio
 import subprocess
+import threading
 from pathlib import Path
 from typing import List, Optional
 import flet as ft
@@ -37,20 +37,21 @@ def get_android_music_dir() -> str:
     return desktop_path
 
 
-async def main(page: ft.Page):
+def main(page: ft.Page):
     page.title = "Lossless Studio"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#07080B"
-    page.padding = ft.Padding(0, 16, 0, 24)
+    page.padding = ft.Padding(0, 10, 0, 20)
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.scroll = ft.ScrollMode.ADAPTIVE
 
     # Configure phone-sized window when previewing on Desktop
     try:
-        page.window.width = 460
-        page.window.height = 880
+        page.window.width = 440
+        page.window.height = 860
         page.window.min_width = 360
         page.window.min_height = 600
+        page.window.center()
     except Exception:
         pass
 
@@ -58,8 +59,8 @@ async def main(page: ft.Page):
     engine = MusicSearchEngine()
     download_dir = get_android_music_dir()
 
-    current_search_task: Optional[asyncio.Task] = None
     is_searching = False
+    search_thread: Optional[threading.Thread] = None
 
     # Status / SnackBar helper
     def show_snackbar(message: str, is_error: bool = False):
@@ -114,6 +115,14 @@ async def main(page: ft.Page):
         except Exception:
             show_snackbar(f"Папка: {download_dir}")
 
+    open_folder_btn = ft.IconButton(
+        icon=ft.Icons.FOLDER_OPEN_ROUNDED,
+        icon_color="#A1A1AA",
+        icon_size=18,
+        tooltip="Открыть папку",
+        on_click=on_open_folder,
+    )
+
     path_card = ft.Container(
         content=ft.Row(
             [
@@ -126,13 +135,7 @@ async def main(page: ft.Page):
                     spacing=1,
                     expand=True,
                 ),
-                ft.IconButton(
-                    icon=ft.Icons.FOLDER_OPEN_ROUNDED,
-                    icon_color="#A1A1AA",
-                    icon_size=18,
-                    tooltip="Открыть папку",
-                    on_click=on_open_folder,
-                ),
+                open_folder_btn,
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -159,18 +162,18 @@ async def main(page: ft.Page):
         expand=True,
     )
 
-    async def on_paste_click(e):
+    def on_paste_click(e):
         try:
-            val = await page.get_clipboard_async()
+            val = page.get_clipboard()
             if val:
                 search_field.value = val.strip()
-                await page.update_async()
+                page.update()
         except Exception:
             pass
 
-    async def on_clear_click(e):
+    def on_clear_click(e):
         search_field.value = ""
-        await page.update_async()
+        page.update()
 
     search_actions = ft.Row(
         [
@@ -284,10 +287,10 @@ async def main(page: ft.Page):
         spacing=8,
     )
 
-    async def on_chip_click(query_text: str):
+    def on_chip_click(query_text: str):
         search_field.value = query_text
-        await page.update_async()
-        await trigger_search()
+        page.update()
+        trigger_search(None)
 
     chips_list = [
         "Hans Zimmer",
@@ -304,7 +307,7 @@ async def main(page: ft.Page):
             ft.Chip(
                 label=ft.Text(name, size=11, color="#A1A1AA"),
                 bgcolor="#1F2030",
-                on_click=lambda e, q=name: asyncio.create_task(on_chip_click(q)),
+                on_click=lambda e, q=name: on_chip_click(q),
             )
             for name in chips_list
         ],
@@ -336,7 +339,6 @@ async def main(page: ft.Page):
             badge_fg = "#818CF8"
             badge_text = "✦ HQ Stream"
 
-        # Image thumbnail
         cover_img = ft.Image(
             src=track.cover_url if track.cover_url else "https://via.placeholder.com/64/161722/FFFFFF?text=🎵",
             width=46,
@@ -356,12 +358,12 @@ async def main(page: ft.Page):
             tooltip="Скачать в FLAC",
         )
 
-        async def download_worker(e):
+        def download_worker(e):
             download_icon_btn.visible = False
             progress_bar.visible = True
             progress_text.visible = True
             progress_text.value = "Загрузка аудиопотока..."
-            await page.update_async()
+            page.update()
 
             def _progress_cb(fraction: float, msg: str):
                 progress_bar.value = fraction
@@ -375,27 +377,27 @@ async def main(page: ft.Page):
                     show_snackbar(f"✓ Скачано: {track.artist} - {track.title}")
                 page.update()
 
-            def _sync_download():
-                fmt = format_dropdown.value.lower() if format_dropdown.value else "flac"
-                return engine.download_and_process(
-                    track=track,
-                    download_dir=download_dir,
-                    target_format=fmt,
-                    progress_callback=_progress_cb,
-                )
+            def _run():
+                try:
+                    fmt = format_dropdown.value.lower() if format_dropdown.value else "flac"
+                    saved_path = engine.download_and_process(
+                        track=track,
+                        download_dir=download_dir,
+                        target_format=fmt,
+                        progress_callback=_progress_cb,
+                    )
+                except Exception as ex:
+                    progress_text.value = f"Ошибка: {str(ex)[:25]}"
+                    progress_text.color = "#EF4444"
+                    download_icon_btn.visible = True
+                    download_icon_btn.icon = ft.Icons.REFRESH_ROUNDED
+                    download_icon_btn.icon_color = "#EF4444"
+                    show_snackbar(f"Ошибка: {ex}", is_error=True)
+                    page.update()
 
-            try:
-                await asyncio.to_thread(_sync_download)
-            except Exception as ex:
-                progress_text.value = f"Ошибка: {str(ex)[:25]}"
-                progress_text.color = "#EF4444"
-                download_icon_btn.visible = True
-                download_icon_btn.icon = ft.Icons.REFRESH_ROUNDED
-                download_icon_btn.icon_color = "#EF4444"
-                show_snackbar(f"Ошибка: {ex}", is_error=True)
-                await page.update_async()
+            threading.Thread(target=_run, daemon=True).start()
 
-        download_icon_btn.on_click = lambda e: asyncio.create_task(download_worker(e))
+        download_icon_btn.on_click = download_worker
 
         dur_str = f" • ⏱ {track.duration_str}" if track.duration > 0 else ""
         sub_info = f"{track.artist}{dur_str}"
@@ -437,32 +439,46 @@ async def main(page: ft.Page):
         )
         return card_content
 
-    # --- Search Logic ---
-    async def trigger_search(e=None):
-        nonlocal current_search_task, is_searching
+    # --- Synchronous, 1-Tap Search Logic ---
+    def trigger_search(e=None):
+        nonlocal is_searching, search_thread
 
         query = search_field.value.strip() if search_field.value else ""
         if not query:
             show_snackbar("Введите запрос для поиска", is_error=True)
             return
 
+        if is_searching:
+            return
+
+        # 1. Immediately deactivate inputs and show cancel button & loading bar
         is_searching = True
         search_btn.disabled = True
+        open_folder_btn.disabled = True
+        search_field.disabled = True
         cancel_btn.visible = True
         loading_indicator.visible = True
         status_label.value = f"🔎 Поиск «{query}» по Lossless базам..."
         results_column.controls.clear()
-        await page.update_async()
+        page.update()
 
-        async def _perform_search():
+        # 2. Fast background worker thread
+        def _worker():
+            nonlocal is_searching
             try:
-                results = await asyncio.to_thread(engine.search_all, query)
+                results = engine.search_all(query)
+                if not is_searching:
+                    return
+
                 if lossless_only_switch.value:
                     results = [r for r in results if r.is_lossless or r.quality_tier in [QualityTier.HI_RES_24BIT, QualityTier.LOSSLESS_FLAC, QualityTier.LOSSLESS_ALAC]]
 
                 loading_indicator.visible = False
                 search_btn.disabled = False
+                open_folder_btn.disabled = False
+                search_field.disabled = False
                 cancel_btn.visible = False
+                is_searching = False
 
                 if not results:
                     status_label.value = "Ничего не найдено. Попробуйте другой запрос."
@@ -477,35 +493,35 @@ async def main(page: ft.Page):
                     status_label.value = f"✨ Найдено треков: {len(results)}"
                     for track in results:
                         results_column.controls.append(build_track_card(track))
-                await page.update_async()
-            except asyncio.CancelledError:
-                loading_indicator.visible = False
-                search_btn.disabled = False
-                cancel_btn.visible = False
-                status_label.value = "⏹ Поиск отменен пользователем."
-                await page.update_async()
+                page.update()
             except Exception as ex:
                 loading_indicator.visible = False
                 search_btn.disabled = False
+                open_folder_btn.disabled = False
+                search_field.disabled = False
                 cancel_btn.visible = False
+                is_searching = False
                 status_label.value = f"Ошибка поиска: {ex}"
-                await page.update_async()
+                page.update()
 
-        current_search_task = asyncio.create_task(_perform_search())
+        search_thread = threading.Thread(target=_worker, daemon=True)
+        search_thread.start()
 
-    async def cancel_search(e):
-        nonlocal current_search_task, is_searching
-        if current_search_task and not current_search_task.done():
-            current_search_task.cancel()
+    def cancel_search(e=None):
+        nonlocal is_searching
+        is_searching = False
         loading_indicator.visible = False
         search_btn.disabled = False
+        open_folder_btn.disabled = False
+        search_field.disabled = False
         cancel_btn.visible = False
         status_label.value = "⏹ Поиск отменен."
-        await page.update_async()
+        page.update()
 
-    search_btn.on_click = lambda e: asyncio.create_task(trigger_search(e))
-    cancel_btn.on_click = lambda e: asyncio.create_task(cancel_search(e))
-    search_field.on_submit = lambda e: asyncio.create_task(trigger_search(e))
+    # Direct references - fires on the very first tap!
+    search_btn.on_click = trigger_search
+    cancel_btn.on_click = cancel_search
+    search_field.on_submit = trigger_search
 
     # =========================================================================
     # 7. Centered Smartphone Device Frame
