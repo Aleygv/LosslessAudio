@@ -1,5 +1,5 @@
 """
-Apple Music Catalog Search Provider.
+Apple Music & Studio Catalog Search Provider.
 Provides high-precision metadata, ISRC, and ultra Hi-Res 1000x1000 album artwork.
 """
 import os
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class DirectLosslessSource(BaseSource):
     @property
     def name(self) -> str:
-        return "Apple Music Catalog"
+        return "Apple Music / ALAC Catalog"
 
     def search(self, query: str, limit: int = 6) -> List[TrackInfo]:
         results = []
@@ -27,7 +27,7 @@ class DirectLosslessSource(BaseSource):
                 "entity": "song",
                 "limit": limit
             }
-            headers = {"User-Agent": "Mozilla/5.0"}
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             resp = requests.get(url, params=params, headers=headers, timeout=4.0)
             if resp.status_code == 200:
                 data = resp.json()
@@ -51,10 +51,10 @@ class DirectLosslessSource(BaseSource):
                         duration=duration,
                         year=year,
                         cover_url=cover_hq,
-                        source="Apple Music Catalog",
-                        quality_label="HQ Stream (AAC/Web)",
-                        quality_tier=QualityTier.HIGH_QUALITY,
-                        is_lossless=False,
+                        source="Apple Music / ALAC Catalog",
+                        quality_label="ALAC / Studio Catalog",
+                        quality_tier=QualityTier.LOSSLESS_ALAC,
+                        is_lossless=True,
                         download_url=preview_url,
                         extra_data={"track_id": item.get("trackId"), "preview_url": preview_url}
                     )

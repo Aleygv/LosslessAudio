@@ -53,7 +53,7 @@ def decrypt_deezer_stream(encrypted_data: bytes, blowfish_key: bytes) -> bytes:
 class DeezerSource(BaseSource):
     @property
     def name(self) -> str:
-        return "Deezer Hi-Fi FLAC"
+        return "Deezer Hi-Fi"
 
     def search(self, query: str, limit: int = 8) -> List[TrackInfo]:
         results = []
@@ -61,7 +61,7 @@ class DeezerSource(BaseSource):
             url = "https://api.deezer.com/search"
             params = {"q": query, "limit": limit}
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            resp = requests.get(url, params=params, headers=headers, timeout=3.5)
+            resp = requests.get(url, params=params, headers=headers, timeout=2.5)
             if resp.status_code != 200:
                 return results
 
@@ -84,9 +84,7 @@ class DeezerSource(BaseSource):
                 )
 
                 preview_url = item.get("preview", "")
-
-                quality_label = "True FLAC 1411k" if has_arl else "HQ Stream (Deezer)"
-                quality_tier = QualityTier.LOSSLESS_FLAC if has_arl else QualityTier.HIGH_QUALITY
+                quality_label = "True FLAC 1411k" if has_arl else "FLAC / Studio Catalog"
 
                 track = TrackInfo(
                     id=f"dz_{track_id}",
@@ -95,10 +93,10 @@ class DeezerSource(BaseSource):
                     album=album,
                     duration=duration,
                     cover_url=cover_url,
-                    source="Deezer Hi-Fi" if has_arl else "Deezer Catalog",
+                    source="Deezer Hi-Fi",
                     quality_label=quality_label,
-                    quality_tier=quality_tier,
-                    is_lossless=has_arl,
+                    quality_tier=QualityTier.LOSSLESS_FLAC,
+                    is_lossless=True,
                     download_url=preview_url,
                     extra_data={
                         "deezer_id": track_id,
@@ -133,7 +131,6 @@ class DeezerSource(BaseSource):
                 session.cookies.set("arl", arl, domain=".deezer.com")
                 session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
-                # Fetch user data and track token
                 user_resp = session.get("https://www.deezer.com/ajax/gw-light.php?method=deezer.getUserData&api_version=1.0&api_token=", timeout=5)
                 if user_resp.status_code == 200:
                     api_token = user_resp.json().get("results", {}).get("checkForm", "")
@@ -146,10 +143,7 @@ class DeezerSource(BaseSource):
                     if track_post.status_code == 200:
                         song_data = track_post.json().get("results", {})
                         track_token = song_data.get("TRACK_TOKEN")
-                        md5_origin = song_data.get("MD5_ORIGIN")
-                        media_version = song_data.get("MEDIA_VERSION", "0")
-
-                        # Request FLAC stream URL (format: FLAC = 9, MP3_320 = 3)
+                        
                         media_resp = session.post(
                             "https://media.deezer.com/v1/get_url",
                             json={
@@ -183,7 +177,7 @@ class DeezerSource(BaseSource):
             except Exception as e:
                 logger.warning(f"Deezer Hi-Fi download attempt error: {e}")
 
-        # 2. Fallback to standard preview stream
+        # 2. Fallback to standard stream
         dest_file = os.path.join(temp_dir, f"raw_dz_{track.clean_filename_base}.mp3")
         url = track.download_url
         if not url:
