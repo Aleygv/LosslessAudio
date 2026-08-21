@@ -1,7 +1,7 @@
 """
 Compact & Pixel-Perfect Track Card Widget.
-Features 52x52 rounded cover thumbnail, inline Hi-Res badges,
-clean horizontal alignment with no vertical wasted space, and dynamic progress bar.
+Features 50x50 rounded cover thumbnail, inline Hi-Res badges,
+dynamic progress bar, instant file open, and Lossless Spectrum Verifier display.
 """
 import io
 import os
@@ -40,13 +40,13 @@ class TrackCard(ctk.CTkFrame):
         self.on_download_click = on_download_click
         self.is_downloading = False
         self.downloaded_file_path: Optional[str] = None
+        self.spectrogram_path: Optional[str] = None
 
         self._build_ui()
         self._load_cover_cached()
         self._bind_hover_effects()
 
     def _build_ui(self):
-        # Prevent frame from blowing up vertically
         self.pack_propagate(False)
 
         # 1. Left: Cover Art Thumbnail (50x50)
@@ -68,7 +68,7 @@ class TrackCard(ctk.CTkFrame):
         )
         self.cover_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        # 2. Right: Action Buttons (fixed width, vertically centered)
+        # 2. Right: Action Buttons
         self.action_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.action_frame.pack(side="right", padx=(8, 12), pady=8)
 
@@ -85,10 +85,12 @@ class TrackCard(ctk.CTkFrame):
         )
         self.download_btn.pack(side="top", pady=2)
 
+        self.btn_row = ctk.CTkFrame(self.action_frame, fg_color="transparent")
+
         self.open_file_btn = ctk.CTkButton(
-            self.action_frame,
-            text="📁 В папке",
-            width=105,
+            self.btn_row,
+            text="📁 Файл",
+            width=65,
             height=26,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11),
             fg_color=COLORS["badge_bg"],
@@ -96,8 +98,23 @@ class TrackCard(ctk.CTkFrame):
             corner_radius=6,
             command=self._on_open_file
         )
+        self.open_file_btn.pack(side="left", padx=(0, 4))
 
-        # 3. Center: Track Details & Badges (fills remaining width)
+        self.spek_btn = ctk.CTkButton(
+            self.btn_row,
+            text="📊 Спектр",
+            width=65,
+            height=26,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            fg_color=COLORS["accent_alac_bg"],
+            hover_color=COLORS["card_hover"],
+            text_color=COLORS["accent_alac"],
+            corner_radius=6,
+            command=self._on_open_spectrogram
+        )
+        self.spek_btn.pack(side="left")
+
+        # 3. Center: Track Details & Badges
         self.info_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.info_frame.pack(side="left", fill="both", expand=True, padx=(0, 6), pady=8)
 
@@ -248,7 +265,6 @@ class TrackCard(ctk.CTkFrame):
             text_color=COLORS["text_secondary"]
         )
         
-        # Replace subtitle with progress bar for ultra clean compact look
         self.subtitle_label.pack_forget()
         self.status_frame.pack(fill="x", expand=True, pady=(2, 0))
         self.progress_bar.pack(fill="x", expand=True, pady=(0, 2))
@@ -256,28 +272,28 @@ class TrackCard(ctk.CTkFrame):
         
         self.on_download_click(self.track, self)
 
-    def update_progress(self, fraction: float, message: str):
+    def update_progress(self, fraction: float, message: str, spectrogram_path: Optional[str] = None):
         def _update():
             self.progress_bar.set(fraction)
             self.status_label.configure(text=message)
+            if spectrogram_path:
+                self.spectrogram_path = spectrogram_path
+
             if fraction >= 1.0:
                 self.is_downloading = False
                 self.configure(border_color=COLORS["accent_success"])
                 self.progress_bar.configure(progress_color=COLORS["accent_success"])
-                self.download_btn.configure(
-                    state="normal",
-                    text="✓ Скачано",
-                    fg_color=COLORS["accent_success"],
-                    hover_color=COLORS["accent_success_hover"],
-                    text_color="#FFFFFF"
-                )
                 self.status_label.configure(text=message, text_color=COLORS["accent_success"])
+                
+                # Show Action Buttons (File + Spectrogram)
                 self.download_btn.pack_forget()
-                self.open_file_btn.pack(side="top", pady=2)
+                self.btn_row.pack(side="top", pady=2)
         self.after(0, _update)
 
-    def set_downloaded_path(self, path: str):
+    def set_downloaded_path(self, path: str, spectrogram_path: Optional[str] = None):
         self.downloaded_file_path = path
+        if spectrogram_path:
+            self.spectrogram_path = spectrogram_path
 
     def _on_open_file(self):
         if self.downloaded_file_path and os.path.exists(self.downloaded_file_path):
@@ -292,6 +308,13 @@ class TrackCard(ctk.CTkFrame):
                     os.startfile(download_dir)
                 else:
                     subprocess.run(["xdg-open", download_dir])
+
+    def _on_open_spectrogram(self):
+        if self.spectrogram_path and os.path.exists(self.spectrogram_path):
+            if os.name == "nt":
+                os.startfile(self.spectrogram_path)
+            else:
+                subprocess.run(["xdg-open", self.spectrogram_path])
 
     def set_error(self, err_msg: str):
         def _err():

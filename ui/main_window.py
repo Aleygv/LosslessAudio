@@ -646,20 +646,21 @@ class MainWindow(ctk.CTk):
 
         def _worker():
             try:
-                saved_file = self.engine.download_and_process(
+                saved_file, spectrum_res = self.engine.download_and_process(
                     track=track,
                     download_dir=download_dir,
                     target_format=target_fmt,
                     progress_callback=card.update_progress
                 )
-                card.set_downloaded_path(saved_file)
+                card.set_downloaded_path(saved_file, spectrum_res.spectrogram_path if spectrum_res else None)
                 self.downloaded_history.append({
                     "track": track,
                     "path": saved_file,
-                    "format": target_fmt.upper()
+                    "format": target_fmt.upper(),
+                    "spectrum": spectrum_res.verdict if spectrum_res else ""
                 })
                 self.after(0, lambda: self.session_counter_lbl.configure(text=f"Скачано за сессию: {len(self.downloaded_history)}"))
-                self.set_status(f"✓ Успешно сохранено: {os.path.basename(saved_file)}")
+                self.set_status(f"✓ Сохранено: {os.path.basename(saved_file)} ({spectrum_res.verdict})")
             except Exception as e:
                 card.set_error(str(e))
                 self.set_status(f"Ошибка загрузки «{track.title}»: {e}")

@@ -1,8 +1,12 @@
 """
-Main Mobile Application Entrypoint for Flet / Android APK build.
+Lossless Music Studio - Desktop Main Application Entrypoint.
 """
-import flet as ft
-from mobile_app import main as mobile_main
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from app import main
 
 if __name__ == "__main__":
-    ft.app(target=mobile_main)
+    main()

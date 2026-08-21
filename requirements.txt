@@ -1,5 +1,7 @@
-flet[all]>=0.86.0
+customtkinter>=5.2.0
+pillow>=10.0.0
 requests>=2.31.0
 mutagen>=1.47.0
 yt-dlp>=2024.1.0
+numpy>=1.24.0
 packaging>=23.0

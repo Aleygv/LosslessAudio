@@ -1,18 +1,19 @@
 """
 Main Search & Download Engine for Lossless Audio Grabber.
-Aggregates all Lossless/Hi-Res sources (Direct Lossless, Deezer, Archive.org, Mirrors, HQ Streams).
-Handles multi-threaded searches, audio conversion, and metadata tagging.
+Aggregates True Studio Lossless sources (Archive.org FLAC, Deezer/Qobuz/Tidal, Web Lossless).
+Handles multi-threaded searches, audio conversion, metadata tagging, and automated spectrum verification.
 """
 import os
 import tempfile
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, Tuple
 
 from core.models import TrackInfo, QualityTier
 from core.audio import convert_audio
 from core.metadata import tag_audio_file
 from core.resolver import resolve_and_download_full_stream
+from core.spectrum_analyzer import analyze_audio_spectrum, SpectrumResult
 
 from sources.base import BaseSource
 from sources.music_search_resolver import DirectLosslessSource
@@ -27,9 +28,9 @@ logger = logging.getLogger(__name__)
 class MusicSearchEngine:
     def __init__(self):
         self.sources: List[BaseSource] = [
-            DirectLosslessSource(),
-            DeezerSource(),
             ArchiveSource(),
+            DeezerSource(),
+            DirectLosslessSource(),
             WebLosslessSource(),
             HighQualityStreamSource(),
         ]
@@ -41,7 +42,7 @@ class MusicSearchEngine:
         status_callback: Optional[Callable[[str], None]] = None
     ) -> List[TrackInfo]:
         """
-        Executes parallel search across all Lossless and HQ audio sources.
+        Executes parallel search across all Lossless audio sources.
         Returns a sorted, deduplicated list of TrackInfo objects.
         """
         all_results: List[TrackInfo] = []
@@ -62,7 +63,6 @@ class MusicSearchEngine:
                     res = future.result()
                     if res:
                         for track in res:
-                            # Deduplicate by clean artist + title
                             key = f"{track.artist.lower().strip()}_{track.title.lower().strip()}_{track.quality_tier.value}"
                             if key not in seen_keys:
                                 seen_keys.add(key)
@@ -72,7 +72,7 @@ class MusicSearchEngine:
                 except Exception as e:
                     logger.debug(f"Error searching {source.name}: {e}")
 
-        # Sort results: Hi-Res 24-bit first, then FLAC/ALAC lossless, then HQ stream
+        # Sort: Hi-Res 24-bit first, then FLAC/ALAC lossless, then HQ stream
         def sort_key(track: TrackInfo):
             tier_priority = {
                 QualityTier.HI_RES_24BIT: 0,
@@ -91,11 +91,12 @@ class MusicSearchEngine:
         track: TrackInfo,
         download_dir: str,
         target_format: str = "flac",  # "alac" or "flac"
-        progress_callback: Optional[Callable[[float, str], None]] = None
-    ) -> str:
+        progress_callback: Optional[Callable[[float, str, Optional[str]], None]] = None
+    ) -> Tuple[str, SpectrumResult]:
         """
         Downloads the full-length track, converts to target format (ALAC .m4a or FLAC .flac),
-        and embeds full ID3/Vorbis/MP4 metadata and cover artwork.
+        embeds full metadata and artwork, and verifies frequency spectrum.
+        Returns: (final_file_path, SpectrumResult)
         """
         os.makedirs(download_dir, exist_ok=True)
         target_format = target_format.lower()
@@ -103,23 +104,22 @@ class MusicSearchEngine:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             if progress_callback:
-                progress_callback(0.05, f"Подготовка: {track.artist} - {track.title}")
+                progress_callback(0.05, f"Подготовка: {track.artist} - {track.title}", None)
 
-            # 1. Download full audio stream
+            # 1. Download master audio stream
             if "archive.org" in (track.download_url or "").lower() and track.download_url.lower().endswith(".flac"):
                 source_instance = ArchiveSource()
-                raw_file = source_instance.download_track(track, temp_dir, progress_callback)
+                raw_file = source_instance.download_track(track, temp_dir, lambda f, m: progress_callback(f, m, None) if progress_callback else None)
             elif track.source == "HQ Audio Stream" and track.download_url:
                 source_instance = HighQualityStreamSource()
-                raw_file = source_instance.download_track(track, temp_dir, progress_callback)
+                raw_file = source_instance.download_track(track, temp_dir, lambda f, m: progress_callback(f, m, None) if progress_callback else None)
             else:
-                # Use Full-Length Audio Resolver to ensure full song is downloaded
-                raw_file = resolve_and_download_full_stream(track, temp_dir, progress_callback)
+                raw_file = resolve_and_download_full_stream(track, temp_dir, lambda f, m: progress_callback(f, m, None) if progress_callback else None)
 
             if not os.path.exists(raw_file):
-                raise RuntimeError("Downloaded raw audio file does not exist.")
+                raise RuntimeError("Скачанный аудиопоток не найден.")
 
-            # 2. Conversion to ALAC or FLAC (or direct copy if ffmpeg not present)
+            # 2. Conversion to ALAC or FLAC
             final_filename = f"{track.clean_filename_base}{target_ext}"
             final_path = os.path.join(download_dir, final_filename)
 
@@ -131,17 +131,23 @@ class MusicSearchEngine:
                 counter += 1
 
             if progress_callback:
-                progress_callback(0.85, f"Сохранение в {target_format.upper()}...")
+                progress_callback(0.85, f"Кодирование в {target_format.upper()}...", None)
 
             converted_path = convert_audio(raw_file, final_path, target_format=target_format)
 
             # 3. Metadata & Cover tagging
             if progress_callback:
-                progress_callback(0.92, "Вшивание метаданных и обложки...")
+                progress_callback(0.92, "Вшивание официальных метаданных и обложки...", None)
 
             tag_audio_file(converted_path, track)
 
+            # 4. Automatic FFT Lossless Spectrum Analysis
             if progress_callback:
-                progress_callback(1.0, f"Готово! Сохранено: {os.path.basename(converted_path)}")
+                progress_callback(0.96, "Анализ частотного спектра (FFT)...", None)
 
-            return converted_path
+            spectrum_result = analyze_audio_spectrum(converted_path, generate_image=True)
+
+            if progress_callback:
+                progress_callback(1.0, f"✓ {spectrum_result.verdict}", spectrum_result.spectrogram_path)
+
+            return converted_path, spectrum_result
