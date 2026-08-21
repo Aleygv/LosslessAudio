@@ -30,7 +30,7 @@ class HighQualityStreamSource(BaseSource):
                 "extract_flat": True,
                 "default_search": f"ytsearch{limit}",
                 "skip_download": True,
-                "socket_timeout": 8,
+                "socket_timeout": 2.5,
                 "geo_bypass": True,
                 "nocheckcertificate": True,
                 "extractor_args": {

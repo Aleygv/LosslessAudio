@@ -19,6 +19,7 @@ from sources.base import BaseSource
 from sources.music_search_resolver import DirectLosslessSource
 from sources.deezer_source import DeezerSource
 from sources.archive_source import ArchiveSource
+from sources.soulseek_source import SoulseekSource
 from sources.web_source import WebLosslessSource
 from sources.fallback_source import HighQualityStreamSource
 
@@ -28,8 +29,9 @@ logger = logging.getLogger(__name__)
 class MusicSearchEngine:
     def __init__(self):
         self.sources: List[BaseSource] = [
-            ArchiveSource(),
+            SoulseekSource(),
             DeezerSource(),
+            ArchiveSource(),
             DirectLosslessSource(),
             WebLosslessSource(),
             HighQualityStreamSource(),
