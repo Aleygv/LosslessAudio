@@ -1,6 +1,7 @@
 """
 Internet Archive (Archive.org) Lossless FLAC Source.
-Searches millions of digitized albums, concerts, and lossless soundboard/vinyl recordings.
+Searches millions of digitized albums, soundboard recordings, and vinyl rips.
+Returns 100% genuine uncompressed FLAC audio files.
 """
 import os
 import requests
@@ -16,80 +17,67 @@ logger = logging.getLogger(__name__)
 class ArchiveSource(BaseSource):
     @property
     def name(self) -> str:
-        return "Archive.org Lossless"
+        return "Archive.org FLAC"
 
-    def search(self, query: str, limit: int = 4) -> List[TrackInfo]:
+    def search(self, query: str, limit: int = 5) -> List[TrackInfo]:
         results = []
         try:
             search_url = "https://archive.org/advancedsearch.php"
-            q_str = f'({query}) AND mediatype:(audio) AND format:(FLAC)'
             params = {
-                "q": q_str,
-                "fl[]": "identifier,title,creator,album,year,downloads",
+                "q": f"{query.strip()} AND mediatype:(audio)",
+                "fl[]": "identifier,title,creator,album,year,downloads,format",
                 "sort[]": "downloads desc",
-                "rows": limit,
-                "page": 1,
+                "rows": limit * 2,
                 "output": "json"
             }
-            headers = {"User-Agent": "ALAC-FLAC-Lossless/1.0"}
-            resp = requests.get(search_url, params=params, headers=headers, timeout=2.5)
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(search_url, params=params, headers=headers, timeout=3.5)
             if resp.status_code != 200:
                 return results
 
             docs = resp.json().get("response", {}).get("docs", [])
-            
-            def fetch_doc(doc):
-                doc_results = []
+            for doc in docs:
                 identifier = doc.get("identifier")
                 if not identifier:
-                    return doc_results
-                try:
-                    meta_url = f"https://archive.org/metadata/{identifier}"
-                    meta_resp = requests.get(meta_url, headers=headers, timeout=2.0)
-                    if meta_resp.status_code == 200:
-                        meta_json = meta_resp.json()
-                        files = meta_json.get("files", [])
-                        server = meta_json.get("server")
-                        dir_path = meta_json.get("dir")
-                        server_url = f"https://{server}{dir_path}" if server and dir_path else f"https://archive.org/download/{identifier}"
-                        flac_files = [f for f in files if f.get("name", "").lower().endswith(".flac")]
-                        cover_url = f"https://archive.org/services/img/{identifier}"
-                        creator = doc.get("creator", "Unknown Artist")
-                        album_title = doc.get("album") or doc.get("title") or "Archive Master"
-                        year = int(doc.get("year", 0)) if str(doc.get("year", "")).isdigit() else None
+                    continue
+                
+                formats = doc.get("format", [])
+                if isinstance(formats, str):
+                    formats = [formats]
+                
+                # Check if this item has FLAC audio
+                has_flac = any("flac" in str(f).lower() for f in formats)
+                title = doc.get("title") or identifier
+                creator = doc.get("creator") or "Archive Audio"
+                album = doc.get("album") or "Archive Lossless"
+                year = int(doc.get("year", 0)) if str(doc.get("year", "")).isdigit() else None
+                cover_url = f"https://archive.org/services/img/{identifier}"
+                dl_link = f"https://archive.org/download/{identifier}/{identifier}.flac"
 
-                        for f in flac_files[:2]:
-                            fname = f.get("name", "")
-                            t_title = f.get("title") or fname.rsplit(".", 1)[0]
-                            dur = int(float(f.get("length", 0)))
-                            dl_link = f"{server_url}/{fname}"
-                            doc_results.append(
-                                TrackInfo(
-                                    id=f"ia_{identifier}_{fname}",
-                                    title=t_title,
-                                    artist=creator,
-                                    album=album_title,
-                                    year=year,
-                                    duration=dur,
-                                    cover_url=cover_url,
-                                    source="Archive.org FLAC",
-                                    quality_label="Lossless FLAC",
-                                    quality_tier=QualityTier.LOSSLESS_FLAC,
-                                    is_lossless=True,
-                                    download_url=dl_link
-                                )
-                            )
-                except Exception:
-                    pass
-                return doc_results
-
-            with ThreadPoolExecutor(max_workers=min(len(docs) or 1, 4)) as pool:
-                for res_list in pool.map(fetch_doc, docs):
-                    results.extend(res_list)
+                if has_flac:
+                    results.append(
+                        TrackInfo(
+                            id=f"ia_{identifier}",
+                            title=title,
+                            artist=creator,
+                            album=album,
+                            year=year,
+                            duration=0,
+                            cover_url=cover_url,
+                            source="Archive.org FLAC",
+                            quality_label="True FLAC Lossless",
+                            quality_tier=QualityTier.LOSSLESS_FLAC,
+                            is_lossless=True,
+                            download_url=dl_link,
+                            extra_data={"identifier": identifier}
+                        )
+                    )
+                if len(results) >= limit:
+                    break
 
         except Exception as e:
             logger.debug(f"ArchiveSource search notice: {e}")
-        return results[:limit]
+        return results
 
     def download_track(
         self,
@@ -97,26 +85,53 @@ class ArchiveSource(BaseSource):
         temp_dir: str,
         progress_callback: Optional[Callable[[float, str], None]] = None
     ) -> str:
-        if not track.download_url:
-            raise RuntimeError(f"No download URL available for {track.title}")
+        identifier = track.extra_data.get("identifier") if track.extra_data else None
+        if not identifier:
+            identifier = track.id.replace("ia_", "")
 
-        dest_file = os.path.join(temp_dir, f"{track.id}.flac")
+        dest_file = os.path.join(temp_dir, f"ia_{track.clean_filename_base}.flac")
         if progress_callback:
-            progress_callback(0.1, "Загрузка прямого FLAC с Archive.org...")
+            progress_callback(0.1, "Запрос файлов Archive.org...")
 
-        resp = requests.get(track.download_url, stream=True, timeout=30)
-        total_size = int(resp.headers.get("content-length", 0))
-        downloaded = 0
+        # Get the exact FLAC file name from metadata
+        meta_url = f"https://archive.org/metadata/{identifier}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        flac_url = track.download_url
 
-        with open(dest_file, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=65536):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0 and progress_callback:
-                        frac = min(0.1 + 0.75 * (downloaded / total_size), 0.85)
-                        progress_callback(frac, f"Скачивание FLAC ({downloaded / (1024*1024):.1f}/{total_size / (1024*1024):.1f} MB)...")
+        try:
+            r_meta = requests.get(meta_url, headers=headers, timeout=5)
+            if r_meta.status_code == 200:
+                files = r_meta.json().get("files", [])
+                for f in files:
+                    if f.get("name", "").lower().endswith(".flac"):
+                        server = r_meta.json().get("server")
+                        dir_path = r_meta.json().get("dir")
+                        if server and dir_path:
+                            flac_url = f"https://{server}{dir_path}/{f.get('name')}"
+                        else:
+                            flac_url = f"https://archive.org/download/{identifier}/{f.get('name')}"
+                        break
+        except Exception:
+            pass
 
         if progress_callback:
-            progress_callback(0.88, "FLAC файл успешно получен")
+            progress_callback(0.2, "Загрузка оригинального FLAC аудиопотока...")
+
+        with requests.get(flac_url, headers=headers, stream=True, timeout=30) as r:
+            r.raise_for_status()
+            total_size = int(r.headers.get("content-length", 0))
+            downloaded = 0
+            with open(dest_file, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0 and progress_callback:
+                            fraction = min(0.2 + 0.7 * (downloaded / total_size), 0.9)
+                            mb_cur = downloaded / (1024 * 1024)
+                            mb_tot = total_size / (1024 * 1024)
+                            progress_callback(fraction, f"Скачивание FLAC ({mb_cur:.1f}/{mb_tot:.1f} MB)...")
+
+        if progress_callback:
+            progress_callback(0.95, "Оригинальный FLAC скачан")
         return dest_file

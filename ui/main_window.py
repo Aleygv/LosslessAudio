@@ -132,6 +132,20 @@ class MainWindow(ctk.CTk):
         )
         self.ffmpeg_badge.pack(side="left", padx=(0, 8))
 
+        self.hifi_btn = ctk.CTkButton(
+            top_actions,
+            text="🔑 Deezer Hi-Fi (ARL)",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            width=150,
+            height=30,
+            fg_color=COLORS["accent_flac_bg"],
+            hover_color=COLORS["card_hover"],
+            text_color=COLORS["accent_flac"],
+            corner_radius=8,
+            command=self._open_hifi_dialog
+        )
+        self.hifi_btn.pack(side="left", padx=(0, 8))
+
         open_folder_btn = ctk.CTkButton(
             top_actions,
             text="📁 Папка загрузок",
@@ -667,15 +681,84 @@ class MainWindow(ctk.CTk):
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _paste_to_entry(self, entry_widget: ctk.CTkEntry):
-        try:
-            text = self.clipboard_get()
-            if text:
-                entry_widget.delete(0, "end")
-                entry_widget.insert(0, text.strip())
-                self.set_status("Текст успешно вставлен из буфера")
-        except Exception:
-            self.set_status("Буфер обмена пуст")
+    def _open_hifi_dialog(self):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Настройки Deezer Hi-Fi (Lossless ARL)")
+        dialog.geometry("560x380")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=COLORS["bg_dark"])
+        dialog.transient(self)
+        dialog.grab_set()
+
+        frame = ctk.CTkFrame(dialog, fg_color=COLORS["card_bg"], corner_radius=12, border_width=1, border_color=COLORS["border"])
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(
+            frame,
+            text="💎 Deezer Hi-Fi Studio FLAC (1411 kbps)",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            text_color=COLORS["text_primary"]
+        ).pack(pady=(16, 4))
+
+        ctk.CTkLabel(
+            frame,
+            text="Укажите ваш Deezer ARL токен для прямого скачивания оригинальных\nнесжатых FLAC мастер-файлов (16-bit 44.1 kHz, полный спектр 22.05 kHz).",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=COLORS["text_secondary"],
+            justify="center"
+        ).pack(pady=(0, 14))
+
+        arl_entry = ctk.CTkEntry(
+            frame,
+            placeholder_text="Вставьте ARL токен (начинается с 192-символьной строки...)",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            height=36,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"]
+        )
+        arl_entry.pack(fill="x", padx=20, pady=(0, 10))
+
+        current_arl = self.config.get("deezer_arl", "")
+        if current_arl:
+            arl_entry.insert(0, current_arl)
+
+        info_box = ctk.CTkLabel(
+            frame,
+            text="💡 Как получить ARL за 10 секунд:\n1. Откройте deezer.com в браузере и войдите в аккаунт\n2. Нажмите F12 -> вкладка Application / Storage -> Cookies\n3. Скопируйте значение cookie с именем «arl»",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=10),
+            text_color=COLORS["text_muted"],
+            justify="left"
+        )
+        info_box.pack(anchor="w", padx=20, pady=(0, 14))
+
+        btn_row = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_row.pack(fill="x", padx=20, pady=(0, 10))
+
+        def _save():
+            new_arl = arl_entry.get().strip()
+            self.config["deezer_arl"] = new_arl
+            save_config(self.config)
+            self.set_status("✓ Настройки Deezer Hi-Fi ARL сохранены!")
+            dialog.destroy()
+
+        ctk.CTkButton(
+            btn_row,
+            text="Сохранить",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+            fg_color=COLORS["accent_primary"],
+            hover_color=COLORS["accent_hover"],
+            command=_save
+        ).pack(side="right", padx=(8, 0))
+
+        ctk.CTkButton(
+            btn_row,
+            text="Отмена",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=COLORS["badge_bg"],
+            hover_color=COLORS["card_hover"],
+            command=dialog.destroy
+        ).pack(side="right")
 
 
 def main():

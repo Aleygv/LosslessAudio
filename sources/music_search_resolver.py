@@ -1,6 +1,6 @@
 """
-Public Lossless & Hi-Fi Music Search Resolver.
-Provides fast multi-region audio lookup for international and domestic tracks.
+Apple Music Catalog Search Provider.
+Provides high-precision metadata, ISRC, and ultra Hi-Res 1000x1000 album artwork.
 """
 import os
 import requests
@@ -15,12 +15,11 @@ logger = logging.getLogger(__name__)
 class DirectLosslessSource(BaseSource):
     @property
     def name(self) -> str:
-        return "Lossless Web Base"
+        return "Apple Music Catalog"
 
     def search(self, query: str, limit: int = 6) -> List[TrackInfo]:
         results = []
         try:
-            # Search public music index
             url = "https://itunes.apple.com/search"
             params = {
                 "term": query,
@@ -39,7 +38,6 @@ class DirectLosslessSource(BaseSource):
                     duration_ms = item.get("trackTimeMillis", 0)
                     duration = int(duration_ms / 1000) if duration_ms else 0
                     
-                    # Apple Music high resolution cover (change 100x100 to 1000x1000)
                     cover_100 = item.get("artworkUrl100", "")
                     cover_hq = cover_100.replace("100x100bb", "1000x1000bb").replace("100x100", "1000x1000")
                     year = item.get("releaseDate", "")[:4]
@@ -53,10 +51,10 @@ class DirectLosslessSource(BaseSource):
                         duration=duration,
                         year=year,
                         cover_url=cover_hq,
-                        source="Apple Music / ALAC Catalog",
-                        quality_label="ALAC / Lossless Master",
-                        quality_tier=QualityTier.LOSSLESS_ALAC,
-                        is_lossless=True,
+                        source="Apple Music Catalog",
+                        quality_label="HQ Stream (AAC/Web)",
+                        quality_tier=QualityTier.HIGH_QUALITY,
+                        is_lossless=False,
                         download_url=preview_url,
                         extra_data={"track_id": item.get("trackId"), "preview_url": preview_url}
                     )

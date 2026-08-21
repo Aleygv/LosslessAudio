@@ -17,6 +17,7 @@ def load_config() -> dict:
         "max_results_per_source": 10,
         "embed_cover_art": True,
         "auto_open_folder": False,
+        "deezer_arl": "",
     }
     if os.path.exists(CONFIG_FILE):
         try:
