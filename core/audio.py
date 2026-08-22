@@ -1,7 +1,7 @@
 """
 Audio conversion and FFmpeg management module.
-Supports converting to ALAC (.m4a) and FLAC (.flac), preserving sample rate and bit depth.
-Gracefully handles environments without FFmpeg (such as Android) by direct stream preservation.
+Supports converting to ALAC (.m4a) and FLAC (.flac) only when source audio is genuine lossless (WAV/FLAC/ALAC/PCM).
+Prevents fake bloating / upscaling of lossy MP3/Opus files into giant fake FLAC containers.
 """
 import os
 import shutil
@@ -50,6 +50,40 @@ def get_ffmpeg_path() -> Optional[str]:
     return None
 
 
+def probe_audio(file_path: str) -> Dict[str, Any]:
+    """Probes audio file sample rate, bit depth, and duration."""
+    info = {"sample_rate": 44100, "bit_depth": 16, "channels": 2, "duration": 0}
+    ffmpeg_exe = get_ffmpeg_path()
+    if not ffmpeg_exe or not os.path.exists(file_path):
+        return info
+
+    try:
+        cmd = [ffmpeg_exe, "-i", file_path]
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, startupinfo=startupinfo)
+        _, stderr = p.communicate()
+        for line in stderr.splitlines():
+            if "Hz" in line:
+                for token in line.split(","):
+                    token = token.strip()
+                    if "Hz" in token:
+                        sr_str = token.replace("Hz", "").strip()
+                        if sr_str.isdigit():
+                            info["sample_rate"] = int(sr_str)
+                    if "s16" in token:
+                        info["bit_depth"] = 16
+                    elif "s24" in token or "24 bits" in token:
+                        info["bit_depth"] = 24
+                    elif "s32" in token:
+                        info["bit_depth"] = 32
+    except Exception:
+        pass
+    return info
+
+
 def convert_audio(
     input_path: str,
     output_path: str,
@@ -57,40 +91,60 @@ def convert_audio(
     progress_callback=None
 ) -> str:
     """
-    Converts input audio file to target lossless format (ALAC .m4a or FLAC .flac).
-    If FFmpeg is not installed (e.g. Android), directly copies and preserves the audio stream.
+    Processes audio stream into the final file.
+    CRITICAL RULE: If the source audio is lossy (e.g. MP3, Opus, AAC), it is preserved in its native
+    container without bloating it into a fake 50MB FLAC file.
+    If the source is genuine Lossless (FLAC, WAV, ALAC), it packages it into bit-perfect FLAC or ALAC.
     """
     ffmpeg_exe = get_ffmpeg_path()
+    input_ext = os.path.splitext(input_path)[1].lower()
     target_format = target_format.lower()
 
+    # Detect if input is already Lossless
+    is_source_lossless = input_ext in [".flac", ".wav", ".alac", ".aif", ".aiff"]
+
+    if not is_source_lossless:
+        # Source is lossy (e.g. mp3, opus, web stream)
+        # DO NOT inflate it into a 50MB fake FLAC! Keep original native container at 5MB!
+        direct_ext = input_ext if input_ext in [".mp3", ".m4a"] else ".mp3"
+        direct_output = os.path.splitext(output_path)[0] + direct_ext
+
+        if ffmpeg_exe:
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-i", input_path,
+                "-vn",
+                "-c:a", "copy",
+                direct_output
+            ]
+            startupinfo = None
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            try:
+                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, startupinfo=startupinfo)
+                return direct_output
+            except Exception:
+                pass
+
+        shutil.copy2(input_path, direct_output)
+        return direct_output
+
+    # Source IS genuine lossless (FLAC / WAV / ALAC)
     if target_format == "alac":
         if not output_path.lower().endswith(".m4a"):
             output_path = os.path.splitext(output_path)[0] + ".m4a"
         codec_args = ["-c:a", "alac"]
-    elif target_format == "flac":
+    else:
         if not output_path.lower().endswith(".flac"):
             output_path = os.path.splitext(output_path)[0] + ".flac"
         codec_args = ["-c:a", "flac", "-compression_level", "8"]
-    else:
-        target_format = "flac"
-        if not output_path.lower().endswith(".flac"):
-            output_path = os.path.splitext(output_path)[0] + ".flac"
-        codec_args = ["-c:a", "flac"]
 
-    # Fallback if FFmpeg is not available (e.g. on Android without binaries)
     if not ffmpeg_exe:
-        logger.info(f"FFmpeg not present; preserving audio stream directly to: {output_path}")
-        input_ext = os.path.splitext(input_path)[1].lower()
-        if input_ext == os.path.splitext(output_path)[1].lower():
-            shutil.copy2(input_path, output_path)
-            return output_path
-        else:
-            direct_output = os.path.splitext(output_path)[0] + input_ext
-            shutil.copy2(input_path, direct_output)
-            return direct_output
+        shutil.copy2(input_path, output_path)
+        return output_path
 
-    # If input is already in the target format, direct copy
-    input_ext = os.path.splitext(input_path)[1].lower()
+    # If already in requested format, direct bit-copy
     if (target_format == "flac" and input_ext == ".flac") or (target_format == "alac" and input_ext in [".m4a", ".alac"]):
         cmd = [
             ffmpeg_exe, "-y",
@@ -108,68 +162,15 @@ def convert_audio(
             output_path
         ]
 
-    logger.info(f"Running conversion: {' '.join(cmd)}")
-    
     startupinfo = None
     if os.name == 'nt':
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
     try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-            startupinfo=startupinfo
-        )
-        stdout, stderr = process.communicate()
-
-        if process.returncode != 0:
-            logger.warning(f"FFmpeg transcode warning: {stderr}. Falling back to direct copy.")
-            shutil.copy2(input_path, output_path)
-            return output_path
-
-        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            shutil.copy2(input_path, output_path)
-            return output_path
-
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, startupinfo=startupinfo)
         return output_path
-    except Exception as ex:
-        logger.warning(f"Conversion exception: {ex}. Using direct copy.")
+    except Exception as e:
+        logger.error(f"Lossless conversion failed: {e}. Preserving original file.")
         shutil.copy2(input_path, output_path)
         return output_path
-
-
-def probe_audio(file_path: str) -> Dict[str, Any]:
-    """Inspects audio file using ffprobe/ffmpeg if available or basic stat."""
-    info = {
-        "file_size": os.path.getsize(file_path) if os.path.exists(file_path) else 0,
-        "raw_info": ""
-    }
-    ffmpeg_exe = get_ffmpeg_path()
-    if not ffmpeg_exe:
-        return info
-
-    startupinfo = None
-    if os.name == 'nt':
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
-    try:
-        cmd = [ffmpeg_exe, "-i", file_path]
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-            startupinfo=startupinfo
-        )
-        _, stderr = process.communicate()
-        info["raw_info"] = stderr
-        for line in stderr.splitlines():
-            if "Audio:" in line:
-                info["stream_info"] = line.strip()
-    except Exception:
-        pass
-    return info
