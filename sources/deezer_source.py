@@ -177,18 +177,6 @@ class DeezerSource(BaseSource):
             except Exception as e:
                 logger.warning(f"Deezer Hi-Fi download attempt error: {e}")
 
-        # 2. Fallback to standard stream
-        dest_file = os.path.join(temp_dir, f"raw_dz_{track.clean_filename_base}.mp3")
-        url = track.download_url
-        if not url:
-            raise ValueError(f"No stream available for Deezer track {track.id}")
-
-        headers = {"User-Agent": "Mozilla/5.0"}
-        with requests.get(url, headers=headers, stream=True, timeout=10) as r:
-            r.raise_for_status()
-            with open(dest_file, "wb") as f:
-                for chunk in r.iter_content(chunk_size=32768):
-                    if chunk:
-                        f.write(chunk)
-
-        return dest_file
+        # 2. Fallback to full-length audio stream (never download 30s preview)
+        from core.resolver import resolve_and_download_full_stream
+        return resolve_and_download_full_stream(track, temp_dir, progress_callback)
