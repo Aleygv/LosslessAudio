@@ -131,14 +131,14 @@ class DeezerSource(BaseSource):
                 session.cookies.set("arl", arl, domain=".deezer.com")
                 session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
-                user_resp = session.get("https://www.deezer.com/ajax/gw-light.php?method=deezer.getUserData&api_version=1.0&api_token=", timeout=5)
+                user_resp = session.get("https://www.deezer.com/ajax/gw-light.php?method=deezer.getUserData&api_version=1.0&api_token=", timeout=15)
                 if user_resp.status_code == 200:
                     api_token = user_resp.json().get("results", {}).get("checkForm", "")
                     
                     track_post = session.post(
                         f"https://www.deezer.com/ajax/gw-light.php?method=song.getData&api_version=1.0&api_token={api_token}",
                         json={"sng_id": dz_id},
-                        timeout=5
+                        timeout=15
                     )
                     if track_post.status_code == 200:
                         song_data = track_post.json().get("results", {})
@@ -151,7 +151,7 @@ class DeezerSource(BaseSource):
                                 "media": [{"type": "FULL", "formats": [{"cipher": "BF_CBC_STRIPE", "format": "FLAC"}, {"cipher": "BF_CBC_STRIPE", "format": "MP3_320"}]}],
                                 "track_tokens": [track_token]
                             },
-                            timeout=5
+                            timeout=15
                         )
                         if media_resp.status_code == 200:
                             media_data = media_resp.json().get("data", [])
