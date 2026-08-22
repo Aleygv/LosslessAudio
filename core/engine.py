@@ -14,6 +14,7 @@ from core.audio import convert_audio
 from core.metadata import tag_audio_file
 from core.resolver import resolve_and_download_full_stream
 from core.spectrum_analyzer import analyze_audio_spectrum, SpectrumResult
+from config import load_config
 
 from sources.base import BaseSource
 from sources.music_search_resolver import DirectLosslessSource
