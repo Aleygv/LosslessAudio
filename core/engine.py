@@ -109,8 +109,17 @@ class MusicSearchEngine:
                 progress_callback(0.05, f"Подготовка: {track.artist} - {track.title}", None)
 
             # 1. Download master audio stream
+            cfg = load_config()
+            has_deezer_arl = bool(cfg.get("deezer_arl"))
+
             if "archive.org" in (track.download_url or "").lower() and track.download_url.lower().endswith(".flac"):
                 source_instance = ArchiveSource()
+                raw_file = source_instance.download_track(track, temp_dir, lambda f, m: progress_callback(f, m, None) if progress_callback else None)
+            elif (track.source == "Deezer Hi-Fi" or "dz_" in track.id) and has_deezer_arl:
+                source_instance = DeezerSource()
+                raw_file = source_instance.download_track(track, temp_dir, lambda f, m: progress_callback(f, m, None) if progress_callback else None)
+            elif "slsk://" in (track.download_url or ""):
+                source_instance = SoulseekSource()
                 raw_file = source_instance.download_track(track, temp_dir, lambda f, m: progress_callback(f, m, None) if progress_callback else None)
             elif track.source == "HQ Audio Stream" and track.download_url:
                 source_instance = HighQualityStreamSource()
